@@ -28,22 +28,25 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
   final _emailCtrl = TextEditingController();
   final _mdpCtrl = TextEditingController();
   final _telCtrl = TextEditingController();
+  final _autreEcoleCtrl = TextEditingController();
 
   String? _ecoleChoisie;
   bool _mdpVisible = false;
 
   static const List<String> _listeEcoles = [
     'HEC Abidjan',
-    'UFHB (Université FHB)',
+    'Université Félix Houphouët-Boigny (UFHB)',
     'INP-HB Yamoussoukro',
     'ESATIC',
     'PIGIER Abidjan',
     'ISTC',
     'INPHB',
-    'Université Catholique',
-    'Sup de Co Abidjan',
+    'UCAO-UUA (Université Catholique de l\'Afrique de l\'Ouest)',
+    'CERAP/UJ (Centre de Recherche et d\'Action pour la Paix)',
     'Autre',
   ];
+
+  bool get _estAutre => _ecoleChoisie == 'Autre';
 
   @override
   void dispose() {
@@ -52,6 +55,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
     _emailCtrl.dispose();
     _mdpCtrl.dispose();
     _telCtrl.dispose();
+    _autreEcoleCtrl.dispose();
     super.dispose();
   }
 
@@ -62,13 +66,23 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
       return;
     }
 
+    // Si "Autre" est sélectionné, utiliser la valeur saisie dans le champ texte
+    final ecoleFinale = _estAutre
+        ? _autreEcoleCtrl.text.trim()
+        : _ecoleChoisie!;
+
+    if (_estAutre && ecoleFinale.isEmpty) {
+      _afficherErreur('Veuillez préciser le nom de votre école ou université.');
+      return;
+    }
+
     widget.onSuivant(
       nom: _nomCtrl.text.trim(),
       prenom: _prenomCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
       motDePasse: _mdpCtrl.text,
       telephone: _telCtrl.text.trim(),
-      ecoleUniversite: _ecoleChoisie!,
+      ecoleUniversite: ecoleFinale,
     );
   }
 
@@ -220,6 +234,26 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                   validator: (val) =>
                       val == null ? 'Veuillez sélectionner votre école' : null,
                 ),
+
+                // Champ texte pour "Autre" (visible uniquement si "Autre" est sélectionné)
+                if (_estAutre) ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _autreEcoleCtrl,
+                    decoration: _decorationChamp(
+                      label: 'Précisez votre école / université',
+                      icone: Icons.edit_outlined,
+                      theme: theme,
+                    ),
+                    validator: (val) {
+                      if (_estAutre && (val == null || val.trim().isEmpty)) {
+                        return 'Veuillez préciser le nom de votre établissement';
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+
                 const SizedBox(height: 36),
 
                 _boutonSuivant(theme),
