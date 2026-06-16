@@ -37,7 +37,7 @@ class _RegisterPageState extends State<RegisterPage> {
   String _ecoleUniversite = '';
 
   double _budgetMaxFCFA = 0;
-  String _quartierCible = '';
+  List<String> _quartierCible = [];
   StatutLogement _statutLogement = StatutLogement.chercheUnLogement;
 
   Proprete _proprete = Proprete.propre;
@@ -81,7 +81,7 @@ class _RegisterPageState extends State<RegisterPage> {
   // Étape 2 → Stocke les critères de logement et va à l'étape 3
   void _surEtape2({
     required double budgetMaxFCFA,
-    required String quartierCible,
+    required List<String> quartierCible,
     required StatutLogement statutLogement,
   }) {
     setState(() {

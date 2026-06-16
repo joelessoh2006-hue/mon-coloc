@@ -28,7 +28,7 @@ class UserModel {
 
   // Critères de logement (Étape 2)
   final double budgetMaxFCFA;
-  final String quartierCible; // Quartier ciblé à Abidjan
+  final List<String> quartierCible; // Quartier(s) ciblé(s) à Abidjan
   final StatutLogement statutLogement;
 
   // Habitudes de vie (Étape 3)
@@ -84,7 +84,7 @@ class UserModel {
       telephone: data['telephone'] as String,
       ecoleUniversite: data['ecoleUniversite'] as String,
       budgetMaxFCFA: (data['budgetMaxFCFA'] as num).toDouble(),
-      quartierCible: data['quartierCible'] as String,
+      quartierCible: (data['quartierCible'] as List<dynamic>).cast<String>(),
       statutLogement: StatutLogement.values.firstWhere(
         (e) => e.name == data['statutLogement'],
       ),
