@@ -1,0 +1,532 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+/// Écran de formulaire permettant à un bailleur d'ajouter un nouveau logement.
+class AddLogementScreen extends StatefulWidget {
+  const AddLogementScreen({super.key});
+
+  @override
+  State<AddLogementScreen> createState() => _AddLogementScreenState();
+}
+
+class _AddLogementScreenState extends State<AddLogementScreen> {
+  final _formKey = GlobalKey<FormState>();
+
+  // Contrôleurs pour les champs de saisie
+  final _quartierController = TextEditingController();
+  final _loyerController = TextEditingController();
+  final _piecesController = TextEditingController();
+  final _cautionController = TextEditingController();
+  final _descriptionController = TextEditingController();
+
+  // État pour la commune sélectionnée
+  String? _communeValue;
+
+  // Liste des communes disponibles
+  final List<String> _communes = [
+    'Cocody',
+    'Angré',
+    'Yopougon',
+    'Marcory',
+    'Plateau',
+    'Adjamé',
+    'Koumassi',
+    'Treichville',
+    'Port-Bouët',
+    'Abobo',
+    'Attécoubé',
+    'Bingerville',
+    'Anyama',
+  ];
+
+  // Simulation d'ajout de photos
+  bool _photosAjoutees = false;
+
+  // État de chargement pour la publication
+  bool _enPublication = false;
+
+  @override
+  void dispose() {
+    _quartierController.dispose();
+    _loyerController.dispose();
+    _piecesController.dispose();
+    _cautionController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
+  }
+
+  /// Simule l'ajout de photos
+  void _simulerAjoutPhotos() {
+    setState(() {
+      _photosAjoutees = !_photosAjoutees;
+    });
+
+    if (_photosAjoutees) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 20),
+              SizedBox(width: 12),
+              Text('Photos ajoutées avec succès'),
+            ],
+          ),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// Valide et publie le logement dans Firestore
+  Future<void> _publierAnnonce() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    // Vérifier que des photos ont été ajoutées
+    if (!_photosAjoutees) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 12),
+              Expanded(child: Text('Veuillez ajouter au moins une photo')),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _enPublication = true);
+
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        throw Exception('Utilisateur non connecté');
+      }
+
+      // Récupération et parsing sécurisé du loyer
+      final loyerText = _loyerController.text.trim();
+      final piecesText = _piecesController.text.trim();
+      final cautionText = _cautionController.text.trim();
+
+      final loyer = int.tryParse(loyerText) ?? 0;
+      final pieces = int.tryParse(piecesText) ?? 0;
+      final cautionMois = int.tryParse(cautionText) ?? 0;
+
+      if (loyer <= 0) {
+        throw Exception('Le loyer doit être supérieur à 0');
+      }
+      if (pieces <= 0) {
+        throw Exception('Le nombre de pièces doit être supérieur à 0');
+      }
+      if (cautionMois <= 0) {
+        throw Exception('La caution doit être supérieure à 0');
+      }
+
+      // Création du document dans la collection 'logements'
+      await FirebaseFirestore.instance.collection('logements').add({
+        'idBailleur': user.uid,
+        'commune': _communeValue,
+        'quartier': _quartierController.text.trim(),
+        'loyer': loyer,
+        'nombrePieces': pieces,
+        'cautionMois': cautionMois,
+        'description': _descriptionController.text.trim(),
+        'photosAjoutees': _photosAjoutees,
+        'datePublication': FieldValue.serverTimestamp(),
+        'statut': 'en_attente',
+      });
+
+      if (!mounted) return;
+
+      // SnackBar de succès
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.white, size: 22),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Annonce enregistrée, en attente de validation par l\'administrateur',
+                  style: TextStyle(fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Color(0xFF1E6B4E),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 4),
+        ),
+      );
+
+      // Retour à l'écran d'accueil du bailleur
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Erreur : ${e.toString()}')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _enPublication = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Publier un logement',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        centerTitle: true,
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // ---------- Titre de la section ----------
+                Text(
+                  'Informations du logement',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Remplissez tous les champs obligatoires ci-dessous.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ---------- Commune (Dropdown) ----------
+                _sectionLabel('Commune *'),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: _communeValue,
+                  decoration: _inputDecoration(
+                    hint: 'Sélectionnez une commune',
+                    prefixIcon: Icons.location_city_rounded,
+                  ),
+                  items: _communes.map((commune) {
+                    return DropdownMenuItem(
+                      value: commune,
+                      child: Text(commune),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() => _communeValue = value);
+                  },
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Veuillez sélectionner une commune';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // ---------- Quartier ----------
+                _sectionLabel('Quartier précis *'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _quartierController,
+                  decoration: _inputDecoration(
+                    hint: 'Ex: Riviera 3, 2 Plateaux',
+                    prefixIcon: Icons.map_rounded,
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Veuillez préciser le quartier';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // ---------- Loyer mensuel ----------
+                _sectionLabel('Loyer mensuel (FCFA) *'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _loyerController,
+                  decoration: _inputDecoration(
+                    hint: 'Ex: 150000',
+                    prefixIcon: Icons.monetization_on_rounded,
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Veuillez indiquer le loyer';
+                    }
+                    final montant = int.tryParse(value.trim());
+                    if (montant == null || montant <= 0) {
+                      return 'Montant invalide';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // ---------- Nombre de pièces ----------
+                _sectionLabel('Nombre de pièces *'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _piecesController,
+                  decoration: _inputDecoration(
+                    hint: 'Ex: 3',
+                    prefixIcon: Icons.meeting_room_rounded,
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Veuillez indiquer le nombre de pièces';
+                    }
+                    final nb = int.tryParse(value.trim());
+                    if (nb == null || nb <= 0) {
+                      return 'Nombre invalide';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // ---------- Caution / Avance ----------
+                _sectionLabel('Caution / Avance (nombre de mois) *'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _cautionController,
+                  decoration: _inputDecoration(
+                    hint: 'Ex: 2',
+                    prefixIcon: Icons.savings_rounded,
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Veuillez indiquer la caution';
+                    }
+                    final nb = int.tryParse(value.trim());
+                    if (nb == null || nb <= 0) {
+                      return 'Nombre de mois invalide';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+
+                // ---------- Description ----------
+                _sectionLabel('Description du bien *'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: _inputDecoration(
+                    hint: 'Décrivez le logement, les commodités, etc.',
+                    prefixIcon: Icons.description_rounded,
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 4,
+                  textCapitalization: TextCapitalization.sentences,
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return 'Veuillez décrire le logement';
+                    }
+                    if (value.trim().length < 10) {
+                      return 'La description doit contenir au moins 10 caractères';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // ---------- Photos (Simulation) ----------
+                Text(
+                  'Photos du logement *',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: _simulerAjoutPhotos,
+                  borderRadius: BorderRadius.circular(16),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 24,
+                      horizontal: 20,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _photosAjoutees
+                          ? const Color(0xFF1E6B4E).withOpacity(0.08)
+                          : Colors.grey.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: _photosAjoutees
+                            ? const Color(0xFF1E6B4E)
+                            : Colors.grey.withOpacity(0.3),
+                        width: 1.5,
+                        strokeAlign: BorderSide.strokeAlignInside,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _photosAjoutees
+                              ? Icons.check_circle
+                              : Icons.add_a_photo,
+                          size: 28,
+                          color: _photosAjoutees
+                              ? const Color(0xFF1E6B4E)
+                              : Colors.grey,
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _photosAjoutees
+                              ? 'Photos ajoutées ✓'
+                              : 'Ajouter des photos',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: _photosAjoutees
+                                ? const Color(0xFF1E6B4E)
+                                : Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                // ---------- Bouton de publication ----------
+                SizedBox(
+                  height: 54,
+                  child: FilledButton.icon(
+                    onPressed: _enPublication ? null : _publierAnnonce,
+                    icon: _enPublication
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.publish_rounded, size: 22),
+                    label: Text(
+                      _enPublication
+                          ? 'Publication en cours…'
+                          : 'Publier l\'annonce',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E6B4E),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Mention obligatoire
+                Text(
+                  '* Champs obligatoires',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Petit label de section
+  Widget _sectionLabel(String texte) {
+    return Text(
+      texte,
+      style: TextStyle(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    );
+  }
+
+  /// Décoration réutilisable pour les champs de saisie
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData prefixIcon,
+    bool alignLabelWithHint = false,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: Icon(prefixIcon, size: 22),
+      alignLabelWithHint: alignLabelWithHint,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      filled: true,
+      fillColor: Colors.grey.withOpacity(0.08),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: const Color(0xFF1E6B4E),
+          width: 1.5,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.red.shade400),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.red.shade400, width: 1.5),
+      ),
+    );
+  }
+}

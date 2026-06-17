@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
@@ -311,7 +312,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   description: 'Proposez un logement vérifié sur la plateforme',
                   couleur: theme.colorScheme.primary,
                   onPressed: () {
-                    // TODO: Navigation vers le formulaire d'ajout de logement
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const AddLogementScreen(),
+                      ),
+                    );
                   },
                 ),
               ),
