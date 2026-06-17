@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/auth/login_screen.dart';
+import 'package:mon_coloc/screens/home_screen.dart';
 import 'package:mon_coloc/services/firebase_config.dart';
 
 void main() async {
@@ -76,7 +77,7 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     if (_estConnecte) {
-      return const HomePage();
+      return const HomeScreen();
     }
 
     return LoginScreen(
@@ -88,85 +89,3 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  bool _inscriptionTerminee = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (_inscriptionTerminee) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mon Coloc'),
-          centerTitle: true,
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle_rounded,
-                  size: 80, color: Colors.green),
-              SizedBox(height: 24),
-              Text(
-                'Inscription réussie !',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Bienvenue dans la communauté Mon Coloc.',
-                style: TextStyle(fontSize: 15, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Mon Coloc'),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Se déconnecter',
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-            },
-          ),
-        ],
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.home_work_rounded,
-                size: 80, color: Colors.grey),
-            SizedBox(height: 24),
-            Text(
-              'Bienvenue sur Mon Coloc',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Vous êtes connecté',
-              style: TextStyle(fontSize: 15, color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

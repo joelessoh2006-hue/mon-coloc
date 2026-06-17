@@ -1,0 +1,406 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+/// Écran d'accueil principal.
+/// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  /// Rôle de l'utilisateur : 'etudiant' ou 'bailleur'
+  String? _role;
+
+  /// Chargement en cours
+  bool _chargement = true;
+
+  /// Index de l'onglet actif (étudiant uniquement)
+  int _ongletActif = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _recupererRole();
+  }
+
+  /// Récupère le rôle de l'utilisateur depuis Firestore
+  Future<void> _recupererRole() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        if (mounted) {
+          setState(() => _chargement = false);
+        }
+        return;
+      }
+
+      final doc =
+          await _firestore.collection('users').doc(user.uid).get();
+
+      if (!mounted) return;
+
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        _role = data['role'] as String? ?? 'etudiant';
+      } else {
+        _role = 'etudiant';
+      }
+
+      setState(() => _chargement = false);
+    } catch (e) {
+      debugPrint('Erreur récupération rôle : $e');
+      if (mounted) {
+        setState(() {
+          _role = 'etudiant';
+          _chargement = false;
+        });
+      }
+    }
+  }
+
+  /// Déconnecte l'utilisateur
+  Future<void> _deconnexion() async {
+    await _auth.signOut();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Indicateur de chargement
+    if (_chargement) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Interface selon le rôle
+    if (_role == 'bailleur') {
+      return _construireDashboardBailleur();
+    }
+
+    // Étudiant par défaut
+    return _construireInterfaceEtudiant();
+  }
+
+  // ---------------------------------------------------------------------------
+  // INTERFACE ÉTUDIANT
+  // ---------------------------------------------------------------------------
+  Widget _construireInterfaceEtudiant() {
+    final pages = [
+      _construirePageDecouvrir(),
+      _construirePageMonEquipe(),
+      _construirePageLogements(),
+      _construirePageMonProfil(),
+    ];
+
+    return Scaffold(
+      body: pages[_ongletActif],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _ongletActif,
+        onTap: (index) => setState(() => _ongletActif = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_rounded),
+            label: 'Découvrir',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.group_rounded),
+            label: 'Mon Équipe',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: 'Logements',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_rounded),
+            label: 'Mon Profil',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _construirePageDecouvrir() {
+    return const Scaffold(
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.people_rounded, size: 80, color: Colors.grey),
+              SizedBox(height: 24),
+              Text(
+                'Futur espace de matching des étudiants',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _construirePageMonEquipe() {
+    return const Scaffold(
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.group_rounded, size: 80, color: Colors.grey),
+              SizedBox(height: 24),
+              Text(
+                'Espace Colocation / Mon Équipe',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _construirePageLogements() {
+    return const Scaffold(
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.home_rounded, size: 80, color: Colors.grey),
+              SizedBox(height: 24),
+              Text(
+                'Liste des logements vérifiés à Abidjan',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _construirePageMonProfil() {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.person_rounded, size: 80, color: Colors.grey),
+              const SizedBox(height: 24),
+              const Text(
+                'Mon Profil',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _deconnexion,
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text(
+                    'Se déconnecter',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: theme.colorScheme.error,
+                    foregroundColor: theme.colorScheme.onError,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // INTERFACE BAILLEUR (DASHBOARD)
+  // ---------------------------------------------------------------------------
+  Widget _construireDashboardBailleur() {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Espace Bailleur - Mon Coloc',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Se déconnecter',
+            onPressed: _deconnexion,
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Message d'accueil
+              const SizedBox(height: 16),
+              Text(
+                'Bienvenue dans votre espace',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Gérez vos logements et suivez vos annonces en toute simplicité.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // Bouton : Ajouter un nouveau logement
+              SizedBox(
+                width: double.infinity,
+                child: _boutonAction(
+                  theme: theme,
+                  icone: Icons.add_home_rounded,
+                  titre: 'Ajouter un nouveau logement',
+                  description: 'Proposez un logement vérifié sur la plateforme',
+                  couleur: theme.colorScheme.primary,
+                  onPressed: () {
+                    // TODO: Navigation vers le formulaire d'ajout de logement
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Bouton : Gérer mes annonces
+              SizedBox(
+                width: double.infinity,
+                child: _boutonAction(
+                  theme: theme,
+                  icone: Icons.business_center_rounded,
+                  titre: 'Gérer mes annonces',
+                  description: 'Consultez et modifiez vos annonces actives',
+                  couleur: const Color(0xFF7C3AED),
+                  onPressed: () {
+                    // TODO: Navigation vers la gestion des annonces
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _boutonAction({
+    required ThemeData theme,
+    required IconData icone,
+    required String titre,
+    required String description,
+    required Color couleur,
+    required VoidCallback onPressed,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: couleur.withOpacity(0.3)),
+      ),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: couleur.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icone, size: 28, color: couleur),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titre,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 18,
+                color: couleur,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
