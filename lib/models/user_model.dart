@@ -5,6 +5,11 @@ enum StatutLogement {
   chercheUnLogement,
 }
 
+enum Sexe {
+  homme,
+  femme,
+}
+
 enum RythmeDeVie {
   leveTot,
   coucheTard,
@@ -30,6 +35,8 @@ class UserModel {
   final double budgetMaxFCFA;
   final List<String> quartierCible; // Quartier(s) ciblé(s) à Abidjan
   final StatutLogement statutLogement;
+  final Sexe sexe;
+  final bool accepteMixite;
 
   // Habitudes de vie (Étape 3)
   final Proprete proprete;
@@ -48,6 +55,8 @@ class UserModel {
     required this.budgetMaxFCFA,
     required this.quartierCible,
     required this.statutLogement,
+    required this.sexe,
+    required this.accepteMixite,
     required this.proprete,
     required this.rythmeDeVie,
     required this.fumeur,
@@ -66,6 +75,8 @@ class UserModel {
       'budgetMaxFCFA': budgetMaxFCFA,
       'quartierCible': quartierCible,
       'statutLogement': statutLogement.name,
+      'sexe': sexe.name,
+      'accepteMixite': accepteMixite,
       'proprete': proprete.name,
       'rythmeDeVie': rythmeDeVie.name,
       'fumeur': fumeur,
@@ -88,6 +99,10 @@ class UserModel {
       statutLogement: StatutLogement.values.firstWhere(
         (e) => e.name == data['statutLogement'],
       ),
+      sexe: Sexe.values.firstWhere(
+        (e) => e.name == data['sexe'],
+      ),
+      accepteMixite: data['accepteMixite'] as bool,
       proprete: Proprete.values.firstWhere(
         (e) => e.name == data['proprete'],
       ),

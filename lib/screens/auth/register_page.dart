@@ -39,6 +39,8 @@ class _RegisterPageState extends State<RegisterPage> {
   double _budgetMaxFCFA = 0;
   List<String> _quartierCible = [];
   StatutLogement _statutLogement = StatutLogement.chercheUnLogement;
+  Sexe _sexe = Sexe.homme;
+  bool _accepteMixite = false;
 
   Proprete _proprete = Proprete.propre;
   RythmeDeVie _rythmeDeVie = RythmeDeVie.leveTot;
@@ -83,11 +85,15 @@ class _RegisterPageState extends State<RegisterPage> {
     required double budgetMaxFCFA,
     required List<String> quartierCible,
     required StatutLogement statutLogement,
+    required Sexe sexe,
+    required bool accepteMixite,
   }) {
     setState(() {
       _budgetMaxFCFA = budgetMaxFCFA;
       _quartierCible = quartierCible;
       _statutLogement = statutLogement;
+      _sexe = sexe;
+      _accepteMixite = accepteMixite;
     });
     _allerPage(2);
   }
@@ -128,6 +134,8 @@ class _RegisterPageState extends State<RegisterPage> {
         budgetMaxFCFA: _budgetMaxFCFA,
         quartierCible: _quartierCible,
         statutLogement: _statutLogement,
+        sexe: _sexe,
+        accepteMixite: _accepteMixite,
         proprete: _proprete,
         rythmeDeVie: _rythmeDeVie,
         fumeur: _fumeur,
@@ -218,6 +226,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   RegisterStep2Screen(
                     onSuivant: _surEtape2,
                     onRetour: () => _allerPage(0),
+                    ecoleUniversite: _ecoleUniversite,
                   ),
                   RegisterStep3Screen(
                     onTerminer: _surEtape3,
