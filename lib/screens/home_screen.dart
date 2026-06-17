@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
+import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
@@ -332,7 +333,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   description: 'Consultez et modifiez vos annonces actives',
                   couleur: const Color(0xFF7C3AED),
                   onPressed: () {
-                    // TODO: Navigation vers la gestion des annonces
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ManageLogementsScreen(),
+                      ),
+                    );
                   },
                 ),
               ),

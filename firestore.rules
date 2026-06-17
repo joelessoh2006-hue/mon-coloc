@@ -1,0 +1,41 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========================================
+    // Règles par défaut : tout refusé
+    // ========================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ========================================
+    // Collection "logements"
+    // ========================================
+    match /logements/{logementId} {
+      // Lecture : Tout utilisateur authentifié peut lire les annonces
+      allow read: if request.auth != null;
+
+      // Création : Seulement si l'utilisateur est connecté et qu'il est le propriétaire
+      allow create: if request.auth != null
+                    && request.resource.data.idBailleur == request.auth.uid;
+
+      // Mise à jour : Seulement le bailleur propriétaire
+      allow update: if request.auth != null
+                    && resource.data.idBailleur == request.auth.uid;
+
+      // Suppression : Seulement le bailleur propriétaire
+      allow delete: if request.auth != null
+                    && resource.data.idBailleur == request.auth.uid;
+    }
+
+    // ========================================
+    // Collection "users"
+    // ========================================
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+
+  }
+}
