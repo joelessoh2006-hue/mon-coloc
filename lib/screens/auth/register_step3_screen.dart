@@ -1,5 +1,5 @@
 // Étape 3 : Habitudes de vie pour la compatibilité
-// Collecte : Propreté, Rythme de vie (lève-tôt/couche-tard), Fumeur (oui/non)
+// Collecte : Propreté, Rythme de vie, Fumeur, Animaux, Bruit, Études
 
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
@@ -9,6 +9,13 @@ class RegisterStep3Screen extends StatefulWidget {
     required Proprete proprete,
     required RythmeDeVie rythmeDeVie,
     required bool fumeur,
+    required StatutAnimaux statutAnimaux,
+    required String? typeAnimaux,
+    required bool bruitsFortsVolume,
+    required bool appelsFrequents,
+    required bool soireesAmis,
+    required bool besoinSilence,
+    required HoraireRevision horaireRevision,
   }) onTerminer;
 
   final VoidCallback onRetour;
@@ -24,9 +31,29 @@ class RegisterStep3Screen extends StatefulWidget {
 }
 
 class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
+  // Sections existantes
   Proprete? _propreteChoisie;
   RythmeDeVie? _rythmeChoisi;
   bool? _fumeurChoisi;
+
+  // Animaux
+  StatutAnimaux? _statutAnimaux;
+  final _animauxCtrl = TextEditingController();
+
+  // Bruit & Ambiance
+  bool _bruitsForts = false;
+  bool _appelsFrequents = false;
+  bool _soireesAmis = false;
+
+  // Études — initialisée avec une valeur par défaut pour éviter le bug SegmentedButton
+  bool _besoinSilence = false;
+  HoraireRevision _horaireRevision = HoraireRevision.jour;
+
+  @override
+  void dispose() {
+    _animauxCtrl.dispose();
+    super.dispose();
+  }
 
   void _soumettre() {
     if (_propreteChoisie == null) {
@@ -41,11 +68,24 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
       _afficherErreur('Veuillez indiquer si vous fumez.');
       return;
     }
+    if (_statutAnimaux == null) {
+      _afficherErreur('Veuillez indiquer votre statut concernant les animaux.');
+      return;
+    }
 
     widget.onTerminer(
       proprete: _propreteChoisie!,
       rythmeDeVie: _rythmeChoisi!,
       fumeur: _fumeurChoisi!,
+      statutAnimaux: _statutAnimaux!,
+      typeAnimaux: _statutAnimaux == StatutAnimaux.enAPossession
+          ? _animauxCtrl.text.trim()
+          : null,
+      bruitsFortsVolume: _bruitsForts,
+      appelsFrequents: _appelsFrequents,
+      soireesAmis: _soireesAmis,
+      besoinSilence: _besoinSilence,
+      horaireRevision: _horaireRevision,
     );
   }
 
@@ -78,7 +118,11 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                     _construireEnTete(theme),
                     const SizedBox(height: 32),
 
-                    // Propreté
+                    // ---- Message d'avertissement ----
+                    _construireMessageAvertissement(theme),
+                    const SizedBox(height: 28),
+
+                    // ---- Propreté ----
                     Text(
                       'Niveau de propreté',
                       style: theme.textTheme.titleSmall?.copyWith(
@@ -106,7 +150,8 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                       valeur: Proprete.propre,
                       icone: Icons.cleaning_services_rounded,
                       titre: 'Propre',
-                      description: 'Je nettoie régulièrement sans être maniaque',
+                      description:
+                          'Je nettoie régulièrement sans être maniaque',
                       couleur: const Color(0xFF7C3AED),
                     ),
                     const SizedBox(height: 10),
@@ -120,7 +165,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Rythme de vie
+                    // ---- Rythme de vie ----
                     const Divider(),
                     const SizedBox(height: 16),
                     Text(
@@ -155,7 +200,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                     ),
                     const SizedBox(height: 28),
 
-                    // Fumeur
+                    // ---- Tabac ----
                     const Divider(),
                     const SizedBox(height: 16),
                     Text(
@@ -194,6 +239,246 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 28),
+
+                    // ---- Animaux de compagnie ----
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Animaux de compagnie',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'As-tu ou acceptes-tu les animaux ?',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _carteAnimaux(
+                      valeur: StatutAnimaux.non,
+                      icone: Icons.block_rounded,
+                      titre: 'Non',
+                      description: 'Je ne souhaite pas d\'animaux',
+                      couleur: const Color(0xFF6B7280),
+                    ),
+                    const SizedBox(height: 10),
+                    _carteAnimaux(
+                      valeur: StatutAnimaux.enAPossession,
+                      icone: Icons.pets_rounded,
+                      titre: 'J\'en ai',
+                      description: 'Je possède déjà un ou plusieurs animaux',
+                      couleur: const Color(0xFF7C3AED),
+                    ),
+                    const SizedBox(height: 10),
+                    _carteAnimaux(
+                      valeur: StatutAnimaux.tolere,
+                      icone: Icons.emoji_nature_rounded,
+                      titre: 'Je n\'en ai pas mais je les tolère',
+                      description:
+                          'Je n\'en ai pas mais je les accepte',
+                      couleur: const Color(0xFF0891B2),
+                    ),
+
+                    // Champ texte si "J'en ai"
+                    if (_statutAnimaux == StatutAnimaux.enAPossession) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _animauxCtrl,
+                        decoration: InputDecoration(
+                          labelText: 'Quel(s) animal/animaux possèdes-tu ?',
+                          hintText: 'Ex: Chat, Chien...',
+                          labelStyle: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontSize: 14,
+                          ),
+                          prefixIcon: Icon(Icons.edit_outlined,
+                              color: theme.colorScheme.outline, size: 20),
+                          filled: true,
+                          fillColor: theme.colorScheme.surfaceContainerLow,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                                color: theme.colorScheme.outlineVariant),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                                color: theme.colorScheme.outlineVariant),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                                color: theme.colorScheme.primary, width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 16),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 28),
+
+                    // ---- Bruit et Ambiance sonore ----
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Bruit et Ambiance sonore',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Comment vis-tu l\'ambiance sonore au quotidien ?',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _interrupteurBruit(
+                      titre: 'Musique forte',
+                      icone: Icons.volume_up_rounded,
+                      valeur: _bruitsForts,
+                      onChanged: (val) =>
+                          setState(() => _bruitsForts = val),
+                      theme: theme,
+                    ),
+                    const SizedBox(height: 8),
+                    _interrupteurBruit(
+                      titre: 'Appels longs',
+                      icone: Icons.phone_in_talk_rounded,
+                      valeur: _appelsFrequents,
+                      onChanged: (val) =>
+                          setState(() => _appelsFrequents = val),
+                      theme: theme,
+                    ),
+                    const SizedBox(height: 8),
+                    _interrupteurBruit(
+                      titre: 'Organise des soirées',
+                      icone: Icons.celebration_rounded,
+                      valeur: _soireesAmis,
+                      onChanged: (val) =>
+                          setState(() => _soireesAmis = val),
+                      theme: theme,
+                    ),
+                    const SizedBox(height: 28),
+
+                    // ---- Habitudes d'étude ----
+                    const Divider(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Habitudes d\'étude',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Spécial étudiant — adaptons la colocation à ton rythme',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: _besoinSilence
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: SwitchListTile(
+                        title: Text(
+                          'Besoin de silence absolu pour réviser',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _besoinSilence
+                              ? 'Oui, j\'ai besoin de calme'
+                              : 'Non, le bruit ne me dérange pas',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        secondary: Icon(
+                          _besoinSilence
+                              ? Icons.volume_mute_rounded
+                              : Icons.hearing_rounded,
+                          color: _besoinSilence
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                        ),
+                        value: _besoinSilence,
+                        activeColor: theme.colorScheme.primary,
+                        onChanged: (val) =>
+                            setState(() => _besoinSilence = val),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Rythme de travail / révision
+                    Text(
+                      'Rythme de travail',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Quand préfères-tu réviser ou travailler ?',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<HoraireRevision>(
+                      segments: const [
+                        ButtonSegment(
+                          value: HoraireRevision.jour,
+                          icon: Icon(Icons.light_mode_rounded),
+                          label: Text('Plutôt de jour'),
+                        ),
+                        ButtonSegment(
+                          value: HoraireRevision.nuit,
+                          icon: Icon(Icons.nightlight_round),
+                          label: Text('Plutôt de nuit'),
+                        ),
+                        ButtonSegment(
+                          value: HoraireRevision.flexible,
+                          icon: Icon(Icons.schedule_rounded),
+                          label: Text('Flexible'),
+                        ),
+                      ],
+                      selected: {_horaireRevision},
+                      onSelectionChanged: (Set<HoraireRevision> selected) {
+                        setState(() => _horaireRevision = selected.first);
+                      },
+                      style: ButtonStyle(
+                        shape: WidgetStatePropertyAll(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 32),
                   ],
                 ),
@@ -209,7 +494,186 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Widgets internes
+  // Message d'avertissement
+  // ---------------------------------------------------------------------------
+  Widget _construireMessageAvertissement(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        border: Border.all(
+          color: const Color(0xFFFFEDD5),
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF97316).withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.notifications_active_rounded,
+              size: 24,
+              color: Color(0xFFEA580C),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Information importante',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF9A3412),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'S\'il vous plaît, remplissez ces informations de la manière la plus honnête possible. '
+                  'Soyez véridiques dans vos réponses, car il y va de la qualité et du confort '
+                  'de votre future colocation !',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const Color(0xFFC2410C),
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Interrupteur pour le bruit
+  // ---------------------------------------------------------------------------
+  Widget _interrupteurBruit({
+    required String titre,
+    required IconData icone,
+    required bool valeur,
+    required ValueChanged<bool> onChanged,
+    required ThemeData theme,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: valeur
+              ? theme.colorScheme.primary
+              : theme.colorScheme.outlineVariant,
+        ),
+      ),
+      child: SwitchListTile(
+        secondary: Icon(
+          icone,
+          color: valeur ? theme.colorScheme.primary : theme.colorScheme.outline,
+        ),
+        title: Text(
+          titre,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            fontWeight: FontWeight.w500,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        value: valeur,
+        activeColor: theme.colorScheme.primary,
+        onChanged: onChanged,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Carte Animaux
+  // ---------------------------------------------------------------------------
+  Widget _carteAnimaux({
+    required StatutAnimaux valeur,
+    required IconData icone,
+    required String titre,
+    required String description,
+    required Color couleur,
+  }) {
+    final bool estSelectionne = _statutAnimaux == valeur;
+
+    return GestureDetector(
+      onTap: () => setState(() => _statutAnimaux = valeur),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: estSelectionne ? couleur.withOpacity(0.07) : Colors.white,
+          border: Border.all(
+            color: estSelectionne ? couleur : const Color(0xFFE5E7EB),
+            width: estSelectionne ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: estSelectionne ? couleur : couleur.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                icone,
+                size: 22,
+                color: estSelectionne ? Colors.white : couleur,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    titre,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: estSelectionne
+                          ? couleur
+                          : const Color(0xFF1E3A5F),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (estSelectionne)
+              Icon(Icons.check_circle_rounded, color: couleur, size: 22),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Widgets existants (conservés)
   // ---------------------------------------------------------------------------
 
   Widget _construireEnTete(ThemeData theme) {
@@ -278,9 +742,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: estSelectionne
-                    ? couleur
-                    : couleur.withOpacity(0.10),
+                color: estSelectionne ? couleur : couleur.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -352,9 +814,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: estSelectionne
-                    ? couleur
-                    : couleur.withOpacity(0.10),
+                color: estSelectionne ? couleur : couleur.withOpacity(0.10),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -431,15 +891,12 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: estSelectionne
-                    ? couleur
-                    : const Color(0xFF1E3A5F),
+                color: estSelectionne ? couleur : const Color(0xFF1E3A5F),
               ),
             ),
             if (estSelectionne) ...[
               const SizedBox(height: 4),
-              Icon(Icons.check_circle_rounded,
-                  color: couleur, size: 18),
+              Icon(Icons.check_circle_rounded, color: couleur, size: 18),
             ],
           ],
         ),

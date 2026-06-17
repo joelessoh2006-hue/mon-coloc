@@ -10,6 +10,18 @@ enum Sexe {
   femme,
 }
 
+enum StatutAnimaux {
+  non,
+  enAPossession,
+  tolere,
+}
+
+enum HoraireRevision {
+  jour,
+  nuit,
+  flexible,
+}
+
 enum RythmeDeVie {
   leveTot,
   coucheTard,
@@ -42,6 +54,13 @@ class UserModel {
   final Proprete proprete;
   final RythmeDeVie rythmeDeVie;
   final bool fumeur;
+  final StatutAnimaux statutAnimaux;
+  final String? typeAnimaux;
+  final bool bruitsFortsVolume;
+  final bool appelsFrequents;
+  final bool soireesAmis;
+  final bool besoinSilence;
+  final HoraireRevision horaireRevision;
 
   final DateTime dateInscription;
 
@@ -60,6 +79,13 @@ class UserModel {
     required this.proprete,
     required this.rythmeDeVie,
     required this.fumeur,
+    required this.statutAnimaux,
+    this.typeAnimaux,
+    required this.bruitsFortsVolume,
+    required this.appelsFrequents,
+    required this.soireesAmis,
+    required this.besoinSilence,
+    required this.horaireRevision,
     DateTime? dateInscription,
   }) : dateInscription = dateInscription ?? DateTime.now();
 
@@ -80,6 +106,13 @@ class UserModel {
       'proprete': proprete.name,
       'rythmeDeVie': rythmeDeVie.name,
       'fumeur': fumeur,
+      'statutAnimaux': statutAnimaux.name,
+      'typeAnimaux': typeAnimaux,
+      'bruitsFortsVolume': bruitsFortsVolume,
+      'appelsFrequents': appelsFrequents,
+      'soireesAmis': soireesAmis,
+      'besoinSilence': besoinSilence,
+      'horaireRevision': horaireRevision.name,
       'dateInscription': Timestamp.fromDate(dateInscription),
     };
   }
@@ -110,6 +143,17 @@ class UserModel {
         (e) => e.name == data['rythmeDeVie'],
       ),
       fumeur: data['fumeur'] as bool,
+      statutAnimaux: StatutAnimaux.values.firstWhere(
+        (e) => e.name == data['statutAnimaux'],
+      ),
+      typeAnimaux: data['typeAnimaux'] as String?,
+      bruitsFortsVolume: data['bruitsFortsVolume'] as bool,
+      appelsFrequents: data['appelsFrequents'] as bool,
+      soireesAmis: data['soireesAmis'] as bool,
+      besoinSilence: data['besoinSilence'] as bool,
+      horaireRevision: HoraireRevision.values.firstWhere(
+        (e) => e.name == data['horaireRevision'],
+      ),
       dateInscription: (data['dateInscription'] as Timestamp).toDate(),
     );
   }

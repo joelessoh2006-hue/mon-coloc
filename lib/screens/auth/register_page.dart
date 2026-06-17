@@ -45,6 +45,13 @@ class _RegisterPageState extends State<RegisterPage> {
   Proprete _proprete = Proprete.propre;
   RythmeDeVie _rythmeDeVie = RythmeDeVie.leveTot;
   bool _fumeur = false;
+  StatutAnimaux _statutAnimaux = StatutAnimaux.non;
+  String? _typeAnimaux;
+  bool _bruitsFortsVolume = false;
+  bool _appelsFrequents = false;
+  bool _soireesAmis = false;
+  bool _besoinSilence = false;
+  HoraireRevision _horaireRevision = HoraireRevision.flexible;
 
   @override
   void dispose() {
@@ -103,11 +110,25 @@ class _RegisterPageState extends State<RegisterPage> {
     required Proprete proprete,
     required RythmeDeVie rythmeDeVie,
     required bool fumeur,
+    required StatutAnimaux statutAnimaux,
+    required String? typeAnimaux,
+    required bool bruitsFortsVolume,
+    required bool appelsFrequents,
+    required bool soireesAmis,
+    required bool besoinSilence,
+    required HoraireRevision horaireRevision,
   }) async {
     setState(() {
       _proprete = proprete;
       _rythmeDeVie = rythmeDeVie;
       _fumeur = fumeur;
+      _statutAnimaux = statutAnimaux;
+      _typeAnimaux = typeAnimaux;
+      _bruitsFortsVolume = bruitsFortsVolume;
+      _appelsFrequents = appelsFrequents;
+      _soireesAmis = soireesAmis;
+      _besoinSilence = besoinSilence;
+      _horaireRevision = horaireRevision;
       _enChargement = true;
     });
 
@@ -139,6 +160,13 @@ class _RegisterPageState extends State<RegisterPage> {
         proprete: _proprete,
         rythmeDeVie: _rythmeDeVie,
         fumeur: _fumeur,
+        statutAnimaux: _statutAnimaux,
+        typeAnimaux: _typeAnimaux,
+        bruitsFortsVolume: _bruitsFortsVolume,
+        appelsFrequents: _appelsFrequents,
+        soireesAmis: _soireesAmis,
+        besoinSilence: _besoinSilence,
+        horaireRevision: _horaireRevision,
       );
 
       // 3. Sauvegarde dans Firestore collection 'users'
