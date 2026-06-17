@@ -1,5 +1,6 @@
 // Étape 1 : Authentification Firebase (Email, MDP) + Infos perso
 // Collecte : Nom, Prénom, Email, Mot de passe, Téléphone (+225), École/Université
+// Le rôle est déjà sélectionné dans RoleSelectionScreen
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -281,14 +282,14 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Icon(
-            Icons.home_work_rounded,
+            Icons.school_rounded,
             color: theme.colorScheme.onPrimaryContainer,
             size: 26,
           ),
         ),
         const SizedBox(height: 20),
         Text(
-          'Créez votre compte',
+          'Créez votre compte étudiant',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w800,
             color: theme.colorScheme.onSurface,

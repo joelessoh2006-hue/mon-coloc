@@ -43,14 +43,20 @@ class UserModel {
   final String telephone; // format +225
   final String ecoleUniversite;
 
-  // Critères de logement (Étape 2)
+  /// Rôle : 'etudiant' ou 'bailleur'
+  final String role;
+
+  /// Vérification du compte (false par défaut, passe à true après validation bailleur)
+  final bool estVerifie;
+
+  // Critères de logement (Étape 2 — uniquement pour étudiants)
   final double budgetMaxFCFA;
   final List<String> quartierCible; // Quartier(s) ciblé(s) à Abidjan
   final StatutLogement statutLogement;
   final Sexe sexe;
   final bool accepteMixite;
 
-  // Habitudes de vie (Étape 3)
+  // Habitudes de vie (Étape 3 — uniquement pour étudiants)
   final Proprete proprete;
   final RythmeDeVie rythmeDeVie;
   final bool fumeur;
@@ -71,6 +77,8 @@ class UserModel {
     required this.prenom,
     required this.telephone,
     required this.ecoleUniversite,
+    this.role = 'etudiant',
+    this.estVerifie = false,
     required this.budgetMaxFCFA,
     required this.quartierCible,
     required this.statutLogement,
@@ -98,6 +106,8 @@ class UserModel {
       'prenom': prenom,
       'telephone': telephone,
       'ecoleUniversite': ecoleUniversite,
+      'role': role,
+      'estVerifie': estVerifie,
       'budgetMaxFCFA': budgetMaxFCFA,
       'quartierCible': quartierCible,
       'statutLogement': statutLogement.name,
@@ -127,6 +137,8 @@ class UserModel {
       prenom: data['prenom'] as String,
       telephone: data['telephone'] as String,
       ecoleUniversite: data['ecoleUniversite'] as String,
+      role: data['role'] as String? ?? 'etudiant',
+      estVerifie: data['estVerifie'] as bool? ?? false,
       budgetMaxFCFA: (data['budgetMaxFCFA'] as num).toDouble(),
       quartierCible: (data['quartierCible'] as List<dynamic>).cast<String>(),
       statutLogement: StatutLogement.values.firstWhere(

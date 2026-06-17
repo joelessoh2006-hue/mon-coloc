@@ -1,5 +1,6 @@
-// Page d'inscription progressive en 3 étapes via PageView
+// Page d'inscription progressive pour les étudiants uniquement
 // Orchestre : Firebase Auth (étape 1) + collecte des infos → création UserModel → Firestore
+// Le rôle est passé en paramètre depuis RoleSelectionScreen
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -11,10 +12,17 @@ import 'package:mon_coloc/screens/auth/register_step2_screen.dart';
 import 'package:mon_coloc/screens/auth/register_step3_screen.dart';
 
 class RegisterPage extends StatefulWidget {
+  /// Rôle de l'utilisateur : 'etudiant' uniquement ici (bailleur a son propre écran)
+  final String role;
+
   /// Appelé une fois que l'inscription est entièrement terminée.
   final VoidCallback onInscriptionTerminee;
 
-  const RegisterPage({super.key, required this.onInscriptionTerminee});
+  const RegisterPage({
+    super.key,
+    required this.role,
+    required this.onInscriptionTerminee,
+  });
 
   @override
   State<RegisterPage> createState() => _RegisterPageState();
@@ -28,7 +36,10 @@ class _RegisterPageState extends State<RegisterPage> {
   int _pageCourante = 0;
   bool _enChargement = false;
 
-  // Données accumulées sur les 3 étapes
+  // Rôle passé depuis l'extérieur
+  String get _role => widget.role;
+
+  // Données communes (étape 1)
   String _nom = '';
   String _prenom = '';
   String _email = '';
@@ -36,6 +47,7 @@ class _RegisterPageState extends State<RegisterPage> {
   String _telephone = '';
   String _ecoleUniversite = '';
 
+  // Données spécifiques Étudiant (étapes 2 et 3)
   double _budgetMaxFCFA = 0;
   List<String> _quartierCible = [];
   StatutLogement _statutLogement = StatutLogement.chercheUnLogement;
@@ -52,6 +64,9 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _soireesAmis = false;
   bool _besoinSilence = false;
   HoraireRevision _horaireRevision = HoraireRevision.flexible;
+
+  /// Nombre total d'étapes selon le rôle
+  int get _nombreEtapes => 3; // Étudiant : toujours 3 étapes
 
   @override
   void dispose() {
@@ -84,10 +99,12 @@ class _RegisterPageState extends State<RegisterPage> {
       _telephone = telephone;
       _ecoleUniversite = ecoleUniversite;
     });
+
+    // Étudiant → va à l'étape 2 (critères de logement)
     _allerPage(1);
   }
 
-  // Étape 2 → Stocke les critères de logement et va à l'étape 3
+  // Étape 2 (Étudiant) → Stocke les critères de logement et va à l'étape 3
   void _surEtape2({
     required double budgetMaxFCFA,
     required List<String> quartierCible,
@@ -105,7 +122,7 @@ class _RegisterPageState extends State<RegisterPage> {
     _allerPage(2);
   }
 
-  // Étape 3 → Finalise l'inscription : Firebase Auth + Firestore
+  // Étape 3 (Étudiant) → Finalise l'inscription
   Future<void> _surEtape3({
     required Proprete proprete,
     required RythmeDeVie rythmeDeVie,
@@ -129,8 +146,14 @@ class _RegisterPageState extends State<RegisterPage> {
       _soireesAmis = soireesAmis;
       _besoinSilence = besoinSilence;
       _horaireRevision = horaireRevision;
-      _enChargement = true;
     });
+
+    await _finaliserInscription();
+  }
+
+  /// Crée le compte Firebase + Firestore pour l'étudiant
+  Future<void> _finaliserInscription() async {
+    setState(() => _enChargement = true);
 
     try {
       // 1. Création du compte Firebase Auth
@@ -141,10 +164,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
       final firebaseUser = cred.user;
       if (firebaseUser == null) {
-        throw Exception("L'utilisateur Firebase est null après la création du compte.");
+        throw Exception(
+            "L'utilisateur Firebase est null après la création du compte.");
       }
 
-      // 2. Construction du UserModel complet
+      // Étudiant : inscription complète avec toutes les données
       final user = UserModel(
         uid: firebaseUser.uid,
         email: _email,
@@ -152,6 +176,8 @@ class _RegisterPageState extends State<RegisterPage> {
         prenom: _prenom,
         telephone: _telephone,
         ecoleUniversite: _ecoleUniversite,
+        role: 'etudiant',
+        estVerifie: false,
         budgetMaxFCFA: _budgetMaxFCFA,
         quartierCible: _quartierCible,
         statutLogement: _statutLogement,
@@ -169,12 +195,11 @@ class _RegisterPageState extends State<RegisterPage> {
         horaireRevision: _horaireRevision,
       );
 
-      // 3. Sauvegarde dans Firestore collection 'users'
       await _userService.sauvegarderUtilisateur(user);
 
       if (!mounted) return;
 
-      // 4. Succès → retour à l'appelant
+      // Succès → retour à l'appelant
       widget.onInscriptionTerminee();
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
@@ -207,15 +232,13 @@ class _RegisterPageState extends State<RegisterPage> {
       setState(() => _enChargement = false);
 
       String messageErreur;
-      // Sur le Web, l'erreur JS est un objet Error avec des propriétés cachées
       try {
-        // Tentative d'extraction des détails de l'erreur JS
         final err = e as dynamic;
         messageErreur = err.message ?? err.code ?? err.toString();
         if (messageErreur == 'Error') {
-          // Essaye de récupérer le message de la réponse HTTP
           final errMap = err is Map ? err : null;
-          messageErreur = errMap?['message'] ?? 'Erreur inconnue côté serveur (code 400)';
+          messageErreur =
+              errMap?['message'] ?? 'Erreur inconnue côté serveur (code 400)';
         }
       } catch (_) {
         messageErreur = e.toString();
@@ -237,12 +260,11 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Indicateur de progression horizontal
         Column(
           children: [
             // Barre de progression
             _construireProgressBar(),
-            // PageView avec les 3 étapes
+            // PageView avec les 3 étapes étudiant
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -250,12 +272,17 @@ class _RegisterPageState extends State<RegisterPage> {
                 onPageChanged: (page) =>
                     setState(() => _pageCourante = page),
                 children: [
+                  // Étape 1 : RegisterStep1Screen (sans sélection de rôle)
                   RegisterStep1Screen(onSuivant: _surEtape1),
+
+                  // Étape 2 : critères de logement
                   RegisterStep2Screen(
                     onSuivant: _surEtape2,
                     onRetour: () => _allerPage(0),
                     ecoleUniversite: _ecoleUniversite,
                   ),
+
+                  // Étape 3 : habitudes de vie
                   RegisterStep3Screen(
                     onTerminer: _surEtape3,
                     onRetour: () => _allerPage(1),
@@ -300,7 +327,7 @@ class _RegisterPageState extends State<RegisterPage> {
       padding: const EdgeInsets.only(top: 48, left: 24, right: 24, bottom: 8),
       color: theme.colorScheme.surface,
       child: Row(
-        children: List.generate(3, (index) {
+        children: List.generate(_nombreEtapes, (index) {
           final bool estComplete = index < _pageCourante;
           final bool estActive = index == _pageCourante;
 
