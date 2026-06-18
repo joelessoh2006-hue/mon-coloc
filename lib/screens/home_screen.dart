@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
+import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
@@ -186,29 +187,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _construirePageLogements() {
-    return const Scaffold(
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.home_rounded, size: 80, color: Colors.grey),
-              SizedBox(height: 24),
-              Text(
-                'Liste des logements vérifiés à Abidjan',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E3A5F),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return const LogementsListScreen();
   }
 
   Widget _construirePageMonProfil() {
