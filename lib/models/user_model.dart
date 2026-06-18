@@ -127,6 +127,17 @@ class UserModel {
     };
   }
 
+  /// Convertit un champ Firestore potentiellement String ou List en `List<String>`.
+  ///
+  /// Utile lorsque Firestore renvoie une chaîne au lieu d'une liste
+  /// (ex: `"Riviera"` au lieu de `["Riviera"]`).
+  static List<String> safeStringList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return List<String>.from(value.map((e) => e.toString()));
+    if (value is String) return [value];
+    return [];
+  }
+
   /// Crée un UserModel à partir d'un DocumentSnapshot Firestore
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -139,34 +150,42 @@ class UserModel {
       ecoleUniversite: data['ecoleUniversite'] as String,
       role: data['role'] as String? ?? 'etudiant',
       estVerifie: data['estVerifie'] as bool? ?? false,
-      budgetMaxFCFA: (data['budgetMaxFCFA'] as num).toDouble(),
-      quartierCible: (data['quartierCible'] as List<dynamic>).cast<String>(),
+      budgetMaxFCFA: (data['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
+      quartierCible: safeStringList(data['quartierCible']),
       statutLogement: StatutLogement.values.firstWhere(
         (e) => e.name == data['statutLogement'],
+        orElse: () => StatutLogement.chercheUnLogement,
       ),
       sexe: Sexe.values.firstWhere(
         (e) => e.name == data['sexe'],
+        orElse: () => Sexe.homme,
       ),
-      accepteMixite: data['accepteMixite'] as bool,
+      accepteMixite: data['accepteMixite'] as bool? ?? false,
       proprete: Proprete.values.firstWhere(
         (e) => e.name == data['proprete'],
+        orElse: () => Proprete.propre,
       ),
       rythmeDeVie: RythmeDeVie.values.firstWhere(
         (e) => e.name == data['rythmeDeVie'],
+        orElse: () => RythmeDeVie.leveTot,
       ),
-      fumeur: data['fumeur'] as bool,
+      fumeur: data['fumeur'] as bool? ?? false,
       statutAnimaux: StatutAnimaux.values.firstWhere(
         (e) => e.name == data['statutAnimaux'],
+        orElse: () => StatutAnimaux.non,
       ),
       typeAnimaux: data['typeAnimaux'] as String?,
-      bruitsFortsVolume: data['bruitsFortsVolume'] as bool,
-      appelsFrequents: data['appelsFrequents'] as bool,
-      soireesAmis: data['soireesAmis'] as bool,
-      besoinSilence: data['besoinSilence'] as bool,
+      bruitsFortsVolume: data['bruitsFortsVolume'] as bool? ?? false,
+      appelsFrequents: data['appelsFrequents'] as bool? ?? false,
+      soireesAmis: data['soireesAmis'] as bool? ?? false,
+      besoinSilence: data['besoinSilence'] as bool? ?? false,
       horaireRevision: HoraireRevision.values.firstWhere(
         (e) => e.name == data['horaireRevision'],
+        orElse: () => HoraireRevision.flexible,
       ),
-      dateInscription: (data['dateInscription'] as Timestamp).toDate(),
+      dateInscription: data['dateInscription'] != null
+          ? (data['dateInscription'] as Timestamp).toDate()
+          : DateTime.now(),
     );
   }
 }
