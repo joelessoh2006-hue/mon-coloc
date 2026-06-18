@@ -1,10 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 /// Écran de détail d'un logement.
 ///
 /// Affiche toutes les informations d'un logement sélectionné depuis la liste
 /// et propose un bouton pour contacter le bailleur via la messagerie.
-class LogementDetailScreen extends StatelessWidget {
+/// Le numéro de téléphone du bailleur est masqué ou affiché selon le statut
+/// de vérification de l'étudiant connecté.
+class LogementDetailScreen extends StatefulWidget {
   /// Données du logement issues du document Firestore.
   final Map<String, dynamic> logementData;
 
@@ -18,16 +22,105 @@ class LogementDetailScreen extends StatelessWidget {
   });
 
   @override
+  State<LogementDetailScreen> createState() => _LogementDetailScreenState();
+}
+
+class _LogementDetailScreenState extends State<LogementDetailScreen> {
+  /// Indique si l'étudiant connecté est vérifié (estVerifie == true).
+  bool? _estVerifie;
+
+  /// Téléphone du bailleur affiché uniquement si l'étudiant est vérifié.
+  String? _bailleurTelephone;
+
+  /// Indique si les données sont en cours de chargement.
+  bool _chargement = true;
+
+  /// Identifiant du bailleur depuis les données du logement.
+  String? _idBailleur;
+
+  @override
+  void initState() {
+    super.initState();
+    _idBailleur = widget.logementData['idBailleur'] as String?;
+    _chargerDonnees();
+  }
+
+  /// Récupère le statut de vérification de l'étudiant connecté
+  /// ainsi que le téléphone du bailleur.
+  Future<void> _chargerDonnees() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        setState(() {
+          _estVerifie = false;
+          _chargement = false;
+        });
+        return;
+      }
+
+      // Récupérer le document de l'étudiant connecté pour son statut estVerifie
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      final estVerifie = userDoc.data()?['estVerifie'] as bool? ?? false;
+
+      // Récupérer le téléphone du bailleur
+      String? bailleurTelephone;
+      if (_idBailleur != null) {
+        final bailleurDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_idBailleur)
+            .get();
+
+        if (bailleurDoc.exists) {
+          bailleurTelephone = bailleurDoc.data()?['telephone'] as String?;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _estVerifie = estVerifie;
+          _bailleurTelephone = bailleurTelephone;
+          _chargement = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _estVerifie = false;
+          _chargement = false;
+        });
+      }
+    }
+  }
+
+  /// Masque les 6 derniers chiffres d'un numéro de téléphone.
+  /// Ex: "07 09 XX XX XX"
+  String _masquerTelephone(String? telephone) {
+    if (telephone == null || telephone.isEmpty) return 'XX XX XX XX XX';
+
+    // On enlève les espaces et caractères non numériques pour compter
+    final digitsOnly = telephone.replaceAll(RegExp(r'\D'), '');
+    if (digitsOnly.length < 4) return 'XX XX XX XX XX';
+
+    // Garder les 4 premiers chiffres, masquer le reste
+    final visible = digitsOnly.substring(0, 4);
+    return '${visible.substring(0, 2)} ${visible.substring(2, 4)} XX XX XX';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     // Extraction des champs avec valeurs par défaut
-    final commune = logementData['commune'] as String? ?? 'Non spécifiée';
-    final quartier = logementData['quartier'] as String? ?? '';
-    final loyer = logementData['loyer'] as int? ?? 0;
-    final nombrePieces = logementData['nombrePieces'] as int? ?? 0;
-    final cautionMois = logementData['cautionMois'] as int? ?? 0;
-    final description = logementData['description'] as String? ?? '';
+    final commune = widget.logementData['commune'] as String? ?? 'Non spécifiée';
+    final quartier = widget.logementData['quartier'] as String? ?? '';
+    final loyer = widget.logementData['loyer'] as int? ?? 0;
+    final nombrePieces = widget.logementData['nombrePieces'] as int? ?? 0;
+    final cautionMois = widget.logementData['cautionMois'] as int? ?? 0;
+    final description = widget.logementData['description'] as String? ?? '';
 
     // Type de logement : "Studio" si <= 1 pièce, sinon "Appartement"
     final typeLogement = nombrePieces <= 1 ? 'Studio' : 'Appartement';
@@ -126,6 +219,11 @@ class LogementDetailScreen extends StatelessWidget {
 
                           const SizedBox(height: 24),
 
+                          // ----- Section Contact du Bailleur -----
+                          _sectionContactBailleur(theme),
+
+                          const SizedBox(height: 24),
+
                           // ----- Localisation (carte simulée) -----
                           if (localisation.isNotEmpty) ...[
                             Text(
@@ -182,6 +280,251 @@ class LogementDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION CONTACT DU BAILLEUR
+  // ---------------------------------------------------------------------------
+  Widget _sectionContactBailleur(ThemeData theme) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Contact du Bailleur',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        if (_chargement)
+          // Pendant le chargement, afficher un indicateur
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.grey.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.grey.withValues(alpha: 0.12),
+              ),
+            ),
+            child: const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          )
+        else if (_estVerifie == true)
+          // Étudiant vérifié → on affiche le vrai numéro
+          _contactVerifie(theme)
+        else
+          // Étudiant non vérifié → on masque le numéro avec avertissement
+          _contactNonVerifie(theme),
+      ],
+    );
+  }
+
+  /// Affichage lorsque l'étudiant est vérifié : vrai numéro + bouton d'appel.
+  Widget _contactVerifie(ThemeData theme) {
+    final telephone =
+        _bailleurTelephone ?? 'Numéro non disponible';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E6B4E).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF1E6B4E).withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Icône téléphone
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E6B4E).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.phone_rounded,
+              color: Color(0xFF1E6B4E),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
+
+          // Numéro de téléphone
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Téléphone',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  telephone,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF1E6B4E),
+                    letterSpacing: 1.0,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Bouton d'appel simulé
+          Container(
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E6B4E),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.phone_rounded, color: Colors.white),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Row(
+                      children: [
+                        const Icon(Icons.phone_rounded,
+                            color: Colors.white, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Appel vers $telephone…',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                    backgroundColor: const Color(0xFF1E6B4E),
+                    behavior: SnackBarBehavior.floating,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Affichage lorsque l'étudiant n'est PAS vérifié : numéro masqué + avertissement.
+  Widget _contactNonVerifie(ThemeData theme) {
+    final telephoneMasque = _masquerTelephone(_bailleurTelephone);
+
+    return Column(
+      children: [
+        // Bandeau d'avertissement
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.orange.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.orange.withValues(alpha: 0.3),
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange.shade700,
+                size: 22,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Pour votre sécurité, le numéro du bailleur est masqué. '
+                  'Vous devez faire vérifier votre statut étudiant par '
+                  'l\'administration pour débloquer le contact.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange.shade900,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Numéro masqué
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: Colors.red.withValues(alpha: 0.15),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.phone_rounded,
+                  color: Colors.red.shade400,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Téléphone (masqué)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.red.shade400,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      telephoneMasque,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.red.shade600,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
