@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import 'logement_detail_screen.dart';
+
 /// Écran listant les logements disponibles pour les étudiants.
 ///
 /// Récupère tous les logements depuis Firestore (collection "logements")
@@ -317,8 +319,14 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
       ),
       child: InkWell(
         onTap: () {
-          // TODO : navigation vers le détail du logement
-          debugPrint('Logement cliqué : $documentId');
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => LogementDetailScreen(
+                logementData: data,
+                documentId: documentId,
+              ),
+            ),
+          );
         },
         borderRadius: BorderRadius.circular(16),
         child: Padding(
