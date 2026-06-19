@@ -101,19 +101,13 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
                   Icon(Icons.search_off_rounded, size: 80, color: Colors.grey[300]),
                   const SizedBox(height: 24),
                   const Text(
-                    'Aucun profil trouvé pour le moment',
+                    'Aucun profil étudiant vérifié n\'est disponible pour le moment.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF1E3A5F),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Reviens plus tard, de nouveaux étudiants arrivent bientôt !',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   ),
                 ],
               ),

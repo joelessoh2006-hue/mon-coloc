@@ -24,9 +24,10 @@ class MatchingService {
     }
     final currentUser = UserModel.fromFirestore(currentUserDoc);
 
-    // 2. Récupérer tous les utilisateurs avec le rôle 'etudiant'
+    // 2. Récupérer tous les étudiants vérifiés
     final querySnapshot = await _usersCollection
         .where('role', isEqualTo: 'etudiant')
+        .where('estVerifie', isEqualTo: true)
         .get();
 
     // 3. Filtrer pour exclure l'utilisateur connecté et calculer les scores

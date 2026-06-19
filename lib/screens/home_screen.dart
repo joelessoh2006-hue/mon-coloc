@@ -5,6 +5,7 @@ import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
 import 'package:mon_coloc/screens/etudiant/decouvrir_screen.dart';
 import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
+import 'package:mon_coloc/screens/mon_profil_screen.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
@@ -170,50 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _construirePageMonProfil() {
-    final theme = Theme.of(context);
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.person_rounded, size: 80, color: Colors.grey),
-              const SizedBox(height: 24),
-              const Text(
-                'Mon Profil',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E3A5F),
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _deconnexion,
-                  icon: const Icon(Icons.logout_rounded),
-                  label: const Text(
-                    'Se déconnecter',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: theme.colorScheme.error,
-                    foregroundColor: theme.colorScheme.onError,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return const MonProfilScreen();
   }
 
   // ---------------------------------------------------------------------------
@@ -230,6 +188,17 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         centerTitle: true,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_rounded),
+            tooltip: 'Mon Profil',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MonProfilScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Se déconnecter',
