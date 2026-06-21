@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
+import 'package:mon_coloc/screens/chat_screen.dart';
+import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
 import 'package:mon_coloc/services/matching_service.dart';
 
 /// Écran "Découvrir" — Affiche les profils étudiants triés par score de matching.
@@ -250,8 +252,8 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
                     onPressed: () {
                       _discuter(studentData);
                     },
-                    icon: const Icon(Icons.chat_rounded, size: 18),
-                    label: const Text('Discuter'),
+                    icon: const Icon(Icons.handshake_rounded, size: 18),
+                    label: const Text('Proposer une colocation'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -451,19 +453,30 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
   // Actions
   // ---------------------------------------------------------------------------
   void _voirProfil(Map<String, dynamic> studentData) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Profil de ${studentData['prenom']} — à implémenter'),
-        behavior: SnackBarBehavior.floating,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProfileDetailScreen(userData: studentData),
       ),
     );
   }
 
   void _discuter(Map<String, dynamic> studentData) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Chat avec ${studentData['prenom']} — à implémenter'),
-        behavior: SnackBarBehavior.floating,
+    final uid = studentData['uid'] as String?;
+    if (uid == null || uid.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de lancer la discussion : utilisateur invalide'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          destinataireId: uid,
+        ),
       ),
     );
   }

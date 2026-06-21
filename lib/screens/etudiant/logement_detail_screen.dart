@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:mon_coloc/screens/chat_screen.dart';
 
 /// Écran de détail d'un logement.
 ///
@@ -712,23 +713,19 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
         height: 54,
         child: FilledButton.icon(
           onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.chat_rounded, color: Colors.white, size: 20),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Connexion à la messagerie en cours…',
-                        style: TextStyle(fontSize: 15),
-                      ),
-                    ),
-                  ],
+            if (_idBailleur == null || _idBailleur!.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Impossible de contacter le bailleur : information manquante'),
+                  behavior: SnackBarBehavior.floating,
                 ),
-                backgroundColor: Color(0xFF1E6B4E),
-                behavior: SnackBarBehavior.floating,
-                duration: Duration(seconds: 3),
+              );
+              return;
+            }
+
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ChatScreen(destinataireId: _idBailleur!),
               ),
             );
           },

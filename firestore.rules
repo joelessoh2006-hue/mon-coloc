@@ -14,27 +14,51 @@ service cloud.firestore {
     // Collection "logements"
     // ========================================
     match /logements/{logementId} {
-      // Lecture : Tout utilisateur authentifié peut lire les annonces
       allow read: if request.auth != null;
-
-      // Création : Seulement si l'utilisateur est connecté et qu'il est le propriétaire
       allow create: if request.auth != null
                     && request.resource.data.idBailleur == request.auth.uid;
-
-      // Mise à jour : Seulement le bailleur propriétaire
       allow update: if request.auth != null
                     && resource.data.idBailleur == request.auth.uid;
-
-      // Suppression : Seulement le bailleur propriétaire
       allow delete: if request.auth != null
                     && resource.data.idBailleur == request.auth.uid;
     }
 
     // ========================================
-    // Collection "users"
+    // Collection "users" — OUVERTE POUR TEST
     // ========================================
     match /users/{userId} {
-      allow read, write: if request.auth != null;
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // ========================================
+    // Collection "equipes" — OUVERTE POUR TEST
+    // ========================================
+    match /equipes/{equipeId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    // ========================================
+    // Collection "conversations" — OUVERTE POUR TEST
+    // ========================================
+    match /conversations/{conversationId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+
+      // Sous-collection "messages"
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+        allow update: if false;
+        allow delete: if false;
+      }
     }
 
   }

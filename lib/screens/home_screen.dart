@@ -5,7 +5,9 @@ import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
 import 'package:mon_coloc/screens/etudiant/decouvrir_screen.dart';
 import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
+import 'package:mon_coloc/screens/etudiant/mon_equipe_screen.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
+import 'package:mon_coloc/services/chat_service.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
@@ -19,6 +21,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ChatService _chatService = ChatService();
 
   /// Rôle de l'utilisateur : 'etudiant' ou 'bailleur'
   String? _role;
@@ -28,6 +31,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Index de l'onglet actif (étudiant uniquement)
   int _ongletActif = 0;
+
+  /// Nombre de conversations avec messages non lus
+  int _nonLuCount = 0;
 
   @override
   void initState() {
@@ -59,6 +65,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       setState(() => _chargement = false);
+
+      // Démarrer l'écoute des messages non lus si étudiant
+      if (_role == 'etudiant') {
+        _ecouterNonLus();
+      }
     } catch (e) {
       debugPrint('Erreur récupération rôle : $e');
       if (mounted) {
@@ -66,7 +77,38 @@ class _HomeScreenState extends State<HomeScreen> {
           _role = 'etudiant';
           _chargement = false;
         });
+        _ecouterNonLus();
       }
+    }
+  }
+
+  /// Écoute en temps réel toutes les conversations de l'utilisateur
+  /// et calcule le nombre de non lues côté client.
+  /// Cette approche est robuste même quand le champ `nonLuPar`
+  /// n'existe pas encore sur certains documents.
+  void _ecouterNonLus() {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
+
+      _chatService.ecouterConversations().listen((snapshot) {
+        if (!mounted) return;
+        int count = 0;
+        for (final doc in snapshot.docs) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) continue;
+          final nonLuPar = data['nonLuPar'] as List<dynamic>?;
+          // Si nonLuPar existe et contient l'UID, c'est un non lu
+          if (nonLuPar != null && nonLuPar.contains(uid)) {
+            count++;
+          }
+        }
+        setState(() {
+          _nonLuCount = count;
+        });
+      });
+    } catch (_) {
+      // Silencieux — l'utilisateur peut ne pas être connecté
     }
   }
 
@@ -114,20 +156,20 @@ class _HomeScreenState extends State<HomeScreen> {
         type: BottomNavigationBarType.fixed,
         selectedItemColor: Theme.of(context).colorScheme.primary,
         unselectedItemColor: Colors.grey,
-        items: const [
-          BottomNavigationBarItem(
+        items: [
+          const BottomNavigationBarItem(
             icon: Icon(Icons.people_rounded),
             label: 'Découvrir',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.group_rounded),
+            icon: _buildMonEquipeIconWithBadge(),
             label: 'Mon Équipe',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
             label: 'Logements',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
             label: 'Mon Profil',
           ),
@@ -136,34 +178,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Construit l'icône "Mon Équipe" avec un badge numérique Flutter affichant
+  /// le nombre de messages non lus.
+  Widget _buildMonEquipeIconWithBadge() {
+    return Badge(
+      label: Text('${_nonLuCount > 99 ? '99+' : _nonLuCount}'),
+      isLabelVisible: _nonLuCount > 0,
+      child: const Icon(Icons.group_rounded),
+    );
+  }
+
   Widget _construirePageDecouvrir() {
     return const DecouvrirScreen();
   }
 
   Widget _construirePageMonEquipe() {
-    return const Scaffold(
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.group_rounded, size: 80, color: Colors.grey),
-              SizedBox(height: 24),
-              Text(
-                'Espace Colocation / Mon Équipe',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1E3A5F),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return const MonEquipeScreen();
   }
 
   Widget _construirePageLogements() {
