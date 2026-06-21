@@ -443,6 +443,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_aRefuseProposition) return const SizedBox.shrink();
       // Si l'utilisateur n'est pas connecté, on cache
       if (currentUser.uid.isEmpty) return const SizedBox.shrink();
+      // Ne proposer que si l'interlocuteur est un étudiant (pas un bailleur)
+      final roleDestinataire = _destinataireInfos?['role'] as String?;
+      if (roleDestinataire != 'etudiant') return const SizedBox.shrink();
 
       return Container(
         width: double.infinity,

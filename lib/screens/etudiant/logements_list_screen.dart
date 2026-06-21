@@ -55,8 +55,9 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
       query = query.where('commune', isEqualTo: _communeChoisie);
     }
 
-    // On trie par date de publication décroissante
-    query = query.orderBy('datePublication', descending: true);
+    // NOTE : On retire le orderBy pour éviter un index composite
+    // (where + orderBy nécessite un index sur commune+datePublication).
+    // Le tri sera fait localement après filtrage.
 
     return query.snapshots();
   }
