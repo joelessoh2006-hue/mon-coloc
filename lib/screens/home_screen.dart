@@ -1,9 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
+import 'package:mon_coloc/screens/bailleur/bailleur_inbox_screen.dart';
+import 'package:mon_coloc/screens/bailleur/bailleur_visits_screen.dart';
 import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
 import 'package:mon_coloc/screens/etudiant/decouvrir_screen.dart';
+import 'package:mon_coloc/screens/etudiant/etudiant_messagerie_screen.dart';
 import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_equipe_screen.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
@@ -31,6 +35,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Index de l'onglet actif (étudiant uniquement)
   int _ongletActif = 0;
+
+  /// Index de l'onglet actif pour le bailleur
+  int _ongletBailleurActif = 0;
 
   /// Nombre de conversations avec messages non lus
   int _nonLuCount = 0;
@@ -133,6 +140,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return _construireDashboardBailleur();
     }
 
+    // Admin : redirige vers le panel admin
+    if (_role == 'admin') {
+      return _construireDashboardAdmin();
+    }
+
     // Étudiant par défaut
     return _construireInterfaceEtudiant();
   }
@@ -143,8 +155,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _construireInterfaceEtudiant() {
     final pages = [
       _construirePageDecouvrir(),
-      _construirePageMonEquipe(),
+      _construirePageMessagerie(),
       _construirePageLogements(),
+      _construirePageMonEquipe(),
       _construirePageMonProfil(),
     ];
 
@@ -162,12 +175,16 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Découvrir',
           ),
           BottomNavigationBarItem(
-            icon: _buildMonEquipeIconWithBadge(),
-            label: 'Mon Équipe',
+            icon: _buildMessagerieIconWithBadge(),
+            label: 'Messagerie',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),
             label: 'Logements',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.group_rounded),
+            label: 'Mon Équipe',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.person_rounded),
@@ -178,18 +195,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Construit l'icône "Mon Équipe" avec un badge numérique Flutter affichant
+  /// Construit l'icône "Messagerie" avec un badge numérique Flutter affichant
   /// le nombre de messages non lus.
-  Widget _buildMonEquipeIconWithBadge() {
+  Widget _buildMessagerieIconWithBadge() {
     return Badge(
       label: Text('${_nonLuCount > 99 ? '99+' : _nonLuCount}'),
       isLabelVisible: _nonLuCount > 0,
-      child: const Icon(Icons.group_rounded),
+      child: const Icon(Icons.chat_rounded),
     );
   }
 
   Widget _construirePageDecouvrir() {
     return const DecouvrirScreen();
+  }
+
+  Widget _construirePageMessagerie() {
+    return const EtudiantMessagerieScreen();
   }
 
   Widget _construirePageMonEquipe() {
@@ -205,16 +226,26 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // INTERFACE BAILLEUR (DASHBOARD)
+  // INTERFACE BAILLEUR (DASHBOARD + ONGLETS)
   // ---------------------------------------------------------------------------
   Widget _construireDashboardBailleur() {
-    final theme = Theme.of(context);
+    final pages = [
+      _construirePageBailleurAccueil(),
+      const BailleurInboxScreen(),
+      const BailleurVisitsScreen(),
+    ];
+
+    final titles = [
+      'Espace Bailleur',
+      'Messagerie',
+      'Mes Visites',
+    ];
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Espace Bailleur - Mon Coloc',
-          style: TextStyle(fontWeight: FontWeight.w700),
+        title: Text(
+          titles[_ongletBailleurActif],
+          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         centerTitle: true,
         actions: [
@@ -236,72 +267,168 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Message d'accueil
-              const SizedBox(height: 16),
-              Text(
-                'Bienvenue dans votre espace',
-                style: theme.textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Gérez vos logements et suivez vos annonces en toute simplicité.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // Bouton : Ajouter un nouveau logement
-              SizedBox(
-                width: double.infinity,
-                child: _boutonAction(
-                  theme: theme,
-                  icone: Icons.add_home_rounded,
-                  titre: 'Ajouter un nouveau logement',
-                  description: 'Proposez un logement vérifié sur la plateforme',
-                  couleur: theme.colorScheme.primary,
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const AddLogementScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Bouton : Gérer mes annonces
-              SizedBox(
-                width: double.infinity,
-                child: _boutonAction(
-                  theme: theme,
-                  icone: Icons.business_center_rounded,
-                  titre: 'Gérer mes annonces',
-                  description: 'Consultez et modifiez vos annonces actives',
-                  couleur: const Color(0xFF7C3AED),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ManageLogementsScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
+      body: pages[_ongletBailleurActif],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _ongletBailleurActif,
+        onTap: (index) => setState(() => _ongletBailleurActif = index),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Theme.of(context).colorScheme.primary,
+        unselectedItemColor: Colors.grey,
+        items: [
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_rounded),
+            label: 'Accueil',
           ),
+          BottomNavigationBarItem(
+            icon: _buildBailleurMessagerieIconWithBadge(),
+            label: 'Messagerie',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_month_rounded),
+            label: 'Visites',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit l'icône "Messagerie" du bailleur avec un badge rouge
+  /// indiquant le nombre de messages non lus.
+  Widget _buildBailleurMessagerieIconWithBadge() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _chatService.ecouterConversations(),
+      builder: (context, snapshot) {
+        final uid = _auth.currentUser?.uid;
+        if (uid == null) return const Icon(Icons.chat_rounded);
+
+        int count = 0;
+        if (snapshot.hasData) {
+          for (final doc in snapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>?;
+            if (data == null) continue;
+            final nonLuPar = data['nonLuPar'] as List<dynamic>?;
+            if (nonLuPar != null && nonLuPar.contains(uid)) {
+              count++;
+            }
+          }
+        }
+
+        return Badge(
+          label: Text('${count > 99 ? '99+' : count}'),
+          isLabelVisible: count > 0,
+          child: const Icon(Icons.chat_rounded),
+        );
+      },
+    );
+  }
+
+  /// Page d'accueil du bailleur avec les actions principales.
+  Widget _construirePageBailleurAccueil() {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            Text(
+              'Bienvenue dans votre espace',
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Gérez vos logements et suivez vos annonces en toute simplicité.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 40),
+
+            // Bouton : Ajouter un nouveau logement
+            SizedBox(
+              width: double.infinity,
+              child: _boutonAction(
+                theme: theme,
+                icone: Icons.add_home_rounded,
+                titre: 'Ajouter un nouveau logement',
+                description: 'Proposez un logement vérifié sur la plateforme',
+                couleur: theme.colorScheme.primary,
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AddLogementScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Bouton : Gérer mes annonces
+            SizedBox(
+              width: double.infinity,
+              child: _boutonAction(
+                theme: theme,
+                icone: Icons.business_center_rounded,
+                titre: 'Gérer mes annonces',
+                description: 'Consultez et modifiez vos annonces actives',
+                couleur: const Color(0xFF7C3AED),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ManageLogementsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // INTERFACE ADMIN
+  // ---------------------------------------------------------------------------
+  Widget _construireDashboardAdmin() {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '🛡️ Espace Admin',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: theme.colorScheme.errorContainer,
+        foregroundColor: theme.colorScheme.onErrorContainer,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.person_rounded),
+            tooltip: 'Mon Profil',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MonProfilScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Se déconnecter',
+            onPressed: _deconnexion,
+          ),
+        ],
+      ),
+      body: const AdminDashboardScreen(),
     );
   }
 

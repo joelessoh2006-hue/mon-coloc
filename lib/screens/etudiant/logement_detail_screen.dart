@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/chat_screen.dart';
+import 'package:mon_coloc/services/visite_service.dart';
 
 /// Écran de détail d'un logement.
 ///
@@ -693,7 +694,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // BOUTON D'ACTION EN BAS
+  // BOUTONS D'ACTION EN BAS
   // ---------------------------------------------------------------------------
   Widget _bottomActionButton(BuildContext context, ThemeData theme) {
     return Container(
@@ -708,45 +709,219 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
           ),
         ],
       ),
-      child: SizedBox(
-        width: double.infinity,
-        height: 54,
-        child: FilledButton.icon(
-          onPressed: () {
-            if (_idBailleur == null || _idBailleur!.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Impossible de contacter le bailleur : information manquante'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-              return;
-            }
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Bouton : Contacter le bailleur
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: () {
+                if (_idBailleur == null || _idBailleur!.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Impossible de contacter le bailleur : information manquante'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                  return;
+                }
 
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ChatScreen(destinataireId: _idBailleur!),
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(destinataireId: _idBailleur!),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.chat_rounded, size: 20),
+              label: const Text(
+                'Contacter le bailleur',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            );
-          },
-          icon: const Icon(Icons.chat_rounded, size: 22),
-          label: const Text(
-            'Contacter le bailleur via la messagerie',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1E6B4E),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ),
-          style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xFF1E6B4E),
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
+          const SizedBox(height: 8),
+          // Bouton : Demander une visite
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: OutlinedButton.icon(
+              onPressed: () => _ouvrirSelecteurDateVisite(context),
+              icon: const Icon(Icons.calendar_month_rounded, size: 20),
+              label: const Text(
+                'Demander une visite',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF1E6B4E),
+                side: const BorderSide(color: Color(0xFF1E6B4E)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
+  }
+
+  /// Ouvre un sélecteur de date et d'heure pour demander une visite.
+  Future<void> _ouvrirSelecteurDateVisite(BuildContext context) async {
+    if (_idBailleur == null || _idBailleur!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Impossible de demander une visite : bailleur inconnu'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    // Sélectionner une date
+    final now = DateTime.now();
+    final dateChoisie = await showDatePicker(
+      context: context,
+      initialDate: now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 60)),
+      locale: const Locale('fr', 'FR'),
+      helpText: 'Choisissez une date de visite',
+      cancelText: 'Annuler',
+      confirmText: 'Confirmer',
+    );
+
+    if (dateChoisie == null || !mounted) return;
+
+    // Sélectionner une heure
+    final heureChoisie = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 10, minute: 0),
+      helpText: 'Choisissez une heure',
+      cancelText: 'Annuler',
+      confirmText: 'Confirmer',
+    );
+
+    if (heureChoisie == null || !mounted) return;
+
+    // Combiner date et heure
+    final dateVisite = DateTime(
+      dateChoisie.year,
+      dateChoisie.month,
+      dateChoisie.day,
+      heureChoisie.hour,
+      heureChoisie.minute,
+    );
+
+    // Confirmer avant d'envoyer
+    final confirmee = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmer la visite'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Vous allez demander une visite pour le logement :'),
+            const SizedBox(height: 8),
+            Text(
+              widget.logementData['titre'] as String? ?? 'Logement',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.calendar_today_rounded, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '${dateChoisie.day.toString().padLeft(2, '0')}/'
+                  '${dateChoisie.month.toString().padLeft(2, '0')}/'
+                  '${dateChoisie.year}',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.access_time_rounded, size: 18),
+                const SizedBox(width: 8),
+                Text(
+                  '${heureChoisie.hour.toString().padLeft(2, '0')}:'
+                  '${heureChoisie.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Envoyer la demande'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmee != true || !mounted) return;
+
+    // Envoyer la demande de visite
+    try {
+      final visiteService = VisiteService();
+      await visiteService.creerDemandeVisite(
+        bailleurId: _idBailleur!,
+        logementId: widget.documentId,
+        logementTitle: widget.logementData['titre'] as String? ?? 'Logement',
+        dateVisite: dateVisite,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text('Demande de visite envoyée avec succès ! 🎉'),
+                ),
+              ],
+            ),
+            backgroundColor: Color(0xFF2E7D32),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur : $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
   }
 
   /// Formate un montant avec des séparateurs de milliers (ex: 150000 -> "150 000")

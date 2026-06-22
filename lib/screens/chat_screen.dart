@@ -65,6 +65,9 @@ class _ChatScreenState extends State<ChatScreen> {
   bool get _estProposeur =>
       _auth.currentUser != null && _proposePar == _auth.currentUser!.uid;
 
+  /// Rôle de l'utilisateur connecté (etudiant / bailleur)
+  String? _monRole;
+
   /// Flag local : l'utilisateur a refusé de proposer la colocation
   bool _aRefuseProposition = false;
 
@@ -89,6 +92,20 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Initialise la conversation et charge les infos du destinataire.
   Future<void> _initialiserChat() async {
     try {
+      // Charger le rôle de l'utilisateur connecté
+      final monUid = _auth.currentUser?.uid;
+      if (monUid != null) {
+        final monDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(monUid)
+            .get();
+        if (monDoc.exists && mounted) {
+          setState(() {
+            _monRole = monDoc.data()?['role'] as String?;
+          });
+        }
+      }
+
       // Charger les infos du destinataire
       final destinataireDoc = await FirebaseFirestore.instance
           .collection('users')
@@ -434,6 +451,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildColocationBanner() {
     final currentUser = _auth.currentUser;
     if (currentUser == null) return const SizedBox.shrink();
+
+    // Si l'utilisateur connecté est un bailleur, on ne montre jamais la bannière
+    if (_monRole == 'bailleur') return const SizedBox.shrink();
 
     final statut = _demandeStatut;
 

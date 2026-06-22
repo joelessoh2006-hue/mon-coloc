@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/screens/home_screen.dart';
 import 'package:mon_coloc/services/firebase_config.dart';
@@ -23,6 +24,12 @@ class MonColocApp extends StatelessWidget {
         colorSchemeSeed: const Color(0xFF1E6B4E),
         brightness: Brightness.light,
       ),
+      localizationsDelegates: [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: [const Locale('fr', 'FR')],
       home: const AuthGate(),
     );
   }

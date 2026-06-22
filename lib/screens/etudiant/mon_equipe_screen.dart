@@ -5,13 +5,18 @@ import 'package:mon_coloc/screens/chat_screen.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 import 'package:mon_coloc/services/equipe_service.dart';
 
-/// Écran "Mon Équipe" — Hub de discussion pour les colocations.
+/// Écran "Mon Équipe" — Gestion de la colocation étudiante.
 ///
-/// Affiche dans une seule vue scrollable :
-/// 1. L'espace Équipe Officielle (si une colocation est acceptée) avec TOUS les membres
-/// 2. Les autres discussions / demandes en attente
+/// Affiche selon l'état de l'utilisateur :
+/// 1. Sans binôme : message "Vous n'avez pas encore de binôme."
+///    + requêtes de colocation reçues en attente (si existantes).
+/// 2. Avec binôme validé : badge "Votre binôme est validé !" +
+///    liste des membres de l'équipe + accès au chat privé.
+///
+/// Les discussions générales sont gérées exclusivement dans l'onglet
+/// "Messagerie & Visites".
 class MonEquipeScreen extends StatefulWidget {
-const MonEquipeScreen({super.key});
+  const MonEquipeScreen({super.key});
 
   @override
   State<MonEquipeScreen> createState() => _MonEquipeScreenState();
@@ -94,7 +99,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
                 Text(
-                  'Chargement de vos discussions…',
+                  'Chargement de votre équipe…',
                   style: TextStyle(fontSize: 15, color: Colors.grey),
                 ),
               ],
@@ -125,69 +130,46 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
 
         final conversationsBrutes = snapshot.data?.docs ?? [];
 
-        // Trier par misAJourLe descendant (côté Dart)
-        conversationsBrutes.sort((a, b) {
-          final dataA = a.data() as Map<String, dynamic>;
-          final dataB = b.data() as Map<String, dynamic>;
-          final tsA = (dataA['misAJourLe'] as Timestamp?)?.toDate() ?? DateTime(2000);
-          final tsB = (dataB['misAJourLe'] as Timestamp?)?.toDate() ?? DateTime(2000);
-          return tsB.compareTo(tsA);
-        });
+        // Séparer les conversations acceptées (binôme validé) des autres
+        final conversationAcceptee = conversationsBrutes.cast<QueryDocumentSnapshot?>().firstWhere(
+          (doc) {
+            if (doc == null) return false;
+            final data = doc.data() as Map<String, dynamic>;
+            return data['demandeStatut'] == 'accepte';
+          },
+          orElse: () => null,
+        );
 
-        final conversations = conversationsBrutes;
-
-        // Séparer les conversations acceptées des autres
-        final conversationsAcceptees = conversations.where((doc) {
+        // Filtrer les demandes reçues en attente (proposées PAR un autre étudiant)
+        final demandesRecues = conversationsBrutes.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          return data['demandeStatut'] == 'accepte';
-        }).toList();
-
-        final conversationsNonAcceptees = conversations.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          return data['demandeStatut'] != 'accepte';
+          final statut = data['demandeStatut'] as String?;
+          final proposePar = data['proposePar'] as String?;
+          return statut == 'en_attente' && proposePar != currentUser.uid;
         }).toList();
 
         return _buildVueComplete(
           currentUser,
-          conversationsAcceptees.isNotEmpty
-              ? conversationsAcceptees.first
-              : null,
-          conversationsNonAcceptees,
+          conversationAcceptee,
+          demandesRecues,
         );
       },
     );
   }
 
   // ---------------------------------------------------------------------------
-  // VUE COMPLÈTE (Section Équipe Officielle + Autres discussions)
+  // VUE COMPLÈTE
   // ---------------------------------------------------------------------------
 
-  /// Construit la vue scrollable complète :
-  /// - Section 1 : Espace Équipe Officiel (si accepté) avec TOUS les membres
-  /// - Section 2 : Demandes reçues / autres discussions
+  /// Construit la vue scrollable :
+  /// - Si binôme validé : Section Équipe + Demandes reçues (si existantes)
+  /// - Sinon : Message "Pas de binôme" + Demandes reçues (si existantes)
   Widget _buildVueComplete(
     User currentUser,
-    DocumentSnapshot? conversationAcceptee,
-    List<QueryDocumentSnapshot> conversationsNonAcceptees,
+    QueryDocumentSnapshot? conversationAcceptee,
+    List<QueryDocumentSnapshot> demandesRecues,
   ) {
-    // Filtrer : Demandes reçues = en_attente ET proposePar != currentUser
-    final demandesRecues = conversationsNonAcceptees.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final statut = data['demandeStatut'] as String?;
-      final proposePar = data['proposePar'] as String?;
-      return statut == 'en_attente' && proposePar != currentUser.uid;
-    }).toList();
-
-    // Filtrer : Vos Discussions = les autres conversations actives
-    final vosDiscussions = conversationsNonAcceptees.where((doc) {
-      final data = doc.data() as Map<String, dynamic>;
-      final statut = data['demandeStatut'] as String?;
-      final proposePar = data['proposePar'] as String?;
-      return !(statut == 'en_attente' && proposePar != currentUser.uid);
-    }).toList();
-
-    final bool aDesAutresConversations =
-        demandesRecues.isNotEmpty || vosDiscussions.isNotEmpty;
+    final bool aBinome = conversationAcceptee != null;
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -197,54 +179,40 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
         children: [
           // ================================================================
-          // SECTION 1 : ESPACE ÉQUIPE OFFICIELLE (si colocation acceptée)
+          // ÉTAT AVEC BINÔME VALIDÉ
           // ================================================================
-          if (conversationAcceptee != null)
-            _buildEspaceEquipeOfficielle(currentUser, conversationAcceptee),
+          if (aBinome)
+            _buildEspaceEquipeOfficielle(currentUser, conversationAcceptee!),
 
-          if (conversationAcceptee != null && aDesAutresConversations)
+          if (aBinome && demandesRecues.isNotEmpty)
             const Padding(
               padding: EdgeInsets.only(top: 24, bottom: 8),
               child: Divider(height: 1, thickness: 1),
             ),
 
           // ================================================================
-          // SECTION 2 : AUTRES DISCUSSIONS & INVITATIONS
+          // DEMANDES DE COLOCATION REÇUES EN ATTENTE
           // ================================================================
-
-          // --- Section Demandes reçues ---
           if (demandesRecues.isNotEmpty) ...[
+            // Header différent selon qu'on a un binôme ou non
             _buildSectionHeader(
               icon: Icons.person_add_alt_1_rounded,
-              title: 'Demandes en attente',
-              subtitle: 'Ces étudiants veulent former une équipe avec vous',
+              title: 'Demandes reçues',
+              subtitle: aBinome
+                  ? 'Ces étudiants veulent rejoindre votre équipe'
+                  : 'Ces étudiants veulent former une équipe avec vous',
             ),
             const SizedBox(height: 8),
             ...demandesRecues.map((doc) => _buildDemandeRecueCard(
                   currentUser,
                   doc,
                 )),
-            const SizedBox(height: 24),
           ],
 
-          // --- Section Vos Discussions ---
-          if (vosDiscussions.isNotEmpty) ...[
-            _buildSectionHeader(
-              icon: Icons.chat_bubble_outline_rounded,
-              title: 'Vos autres discussions',
-              subtitle: 'Discussions en cours avec d\'autres étudiants',
-            ),
-            const SizedBox(height: 8),
-            ...vosDiscussions.map((doc) => _buildDiscussionCard(
-                  currentUser,
-                  doc,
-                )),
-          ],
-
-          // --- Message si absolument rien ---
-          if (conversationAcceptee == null &&
-              demandesRecues.isEmpty &&
-              vosDiscussions.isEmpty)
+          // ================================================================
+          // ÉTAT SANS BINÔME ET SANS DEMANDE
+          // ================================================================
+          if (!aBinome && demandesRecues.isEmpty)
             _buildEmptyState(),
         ],
       ),
@@ -252,7 +220,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // ESPACE ÉQUIPE OFFICIELLE (Multi-membres)
+  // ESPACE ÉQUIPE OFFICIELLE (avec binôme validé)
   // ---------------------------------------------------------------------------
 
   /// Construit l'espace "Équipe Officielle" avec les félicitations,
@@ -423,7 +391,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
 
             const SizedBox(height: 20),
 
-            // Bouton : Discussion d'équipe
+            // Bouton : Discussion privée
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -653,7 +621,8 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
     );
   }
 
-  /// Construit l'état vide quand il n'y a aucune conversation.
+  /// Construit l'état vide quand l'utilisateur n'a pas de binôme
+  /// et aucune demande en attente.
   Widget _buildEmptyState() {
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.6,
@@ -661,25 +630,29 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.group_rounded, size: 80, color: Colors.grey[300]),
+            Icon(Icons.person_search_rounded, size: 80, color: Colors.grey[300]),
             const SizedBox(height: 24),
             const Text(
-              'Aucune discussion pour le moment',
+              'Vous n\'avez pas encore de binôme.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
                 color: Color(0xFF1E3A5F),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Explorez les profils dans l\'onglet Découvrir\npour trouver votre futur colocataire !',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[500],
-                height: 1.4,
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Explorez les profils dans l\'onglet Découvrir'
+                '\npour trouver votre futur colocataire !',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                  height: 1.4,
+                ),
               ),
             ),
           ],
@@ -795,202 +768,6 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                   Icon(
                     Icons.chevron_right_rounded,
                     color: Colors.grey[400],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // CARTE DISCUSSION
-  // ---------------------------------------------------------------------------
-
-  /// Construit une carte pour une discussion active.
-  Widget _buildDiscussionCard(
-    User currentUser,
-    QueryDocumentSnapshot doc,
-  ) {
-    final data = doc.data() as Map<String, dynamic>;
-    final conversationId = doc.id;
-    final membres = List<String>.from(data['membres'] as List);
-    final dernierMessage = data['dernierMessage'] as String? ?? '';
-    final misAJourLe = data['misAJourLe'] as Timestamp?;
-    final demandeStatut = data['demandeStatut'] as String?;
-
-    // Identifier l'autre membre
-    final autreId =
-        membres.where((id) => id != currentUser.uid).firstOrNull ?? '';
-
-    String statutLabel;
-    Color statutCouleur;
-    IconData statutIcone;
-
-    switch (demandeStatut) {
-      case 'en_attente':
-        statutLabel = 'En attente';
-        statutCouleur = const Color(0xFF1565C0);
-        statutIcone = Icons.hourglass_empty_rounded;
-        break;
-      case 'refuse':
-        statutLabel = 'Refusée';
-        statutCouleur = Colors.red;
-        statutIcone = Icons.cancel_outlined;
-        break;
-      default:
-        statutLabel = 'Active';
-        statutCouleur = Colors.grey;
-        statutIcone = Icons.chat_rounded;
-    }
-
-    return FutureBuilder<Map<String, dynamic>?>(
-      future: _recupererInfosUtilisateur(autreId),
-      builder: (context, snapshot) {
-        final infos = snapshot.data;
-        final prenom = infos?['prenom'] as String? ?? 'Inconnu';
-        final nom = infos?['nom'] as String? ?? '';
-        final photoUrl = infos?['photoUrl'] as String?;
-
-        // Formater le timestamp
-        String tempsAffiche = '';
-        if (misAJourLe != null) {
-          final date = misAJourLe.toDate();
-          final maintenant = DateTime.now();
-          final difference = maintenant.difference(date);
-
-          if (difference.inMinutes < 1) {
-            tempsAffiche = 'À l\'instant';
-          } else if (difference.inHours < 1) {
-            tempsAffiche = 'Il y a ${difference.inMinutes} min';
-          } else if (difference.inDays < 1) {
-            tempsAffiche =
-                '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-          } else if (difference.inDays == 1) {
-            tempsAffiche = 'Hier';
-          } else if (difference.inDays < 7) {
-            tempsAffiche = 'Il y a ${difference.inDays} jours';
-          } else {
-            tempsAffiche =
-                '${date.day}/${date.month}/${date.year}';
-          }
-        }
-
-        return Card(
-          margin: const EdgeInsets.only(bottom: 8),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: Colors.grey.shade200),
-          ),
-          child: InkWell(
-            onTap: () => _ouvrirChat(conversationId, autreId),
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-              child: Row(
-                children: [
-                  // Avatar
-                  CircleAvatar(
-                    radius: 22,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                    backgroundImage:
-                        photoUrl != null ? NetworkImage(photoUrl) : null,
-                    child: photoUrl == null
-                        ? Text(
-                            prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  // Contenu
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '$prenom $nom',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1E3A5F),
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            if (tempsAffiche.isNotEmpty)
-                              Text(
-                                tempsAffiche,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[400],
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            // Statut badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: statutCouleur.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    statutIcone,
-                                    size: 11,
-                                    color: statutCouleur,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    statutLabel,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
-                                      color: statutCouleur,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Dernier message
-                            Expanded(
-                              child: Text(
-                                dernierMessage.isNotEmpty
-                                    ? dernierMessage
-                                    : 'Aucun message…',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey[500],
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
                   ),
                 ],
               ),

@@ -44,6 +44,13 @@ service cloud.firestore {
     }
 
     // ========================================
+    // Collection "visites" — OUVERTE POUR TEST
+    // ========================================
+    match /visites/{visiteId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ========================================
     // Collection "conversations" — OUVERTE POUR TEST
     // ========================================
     match /conversations/{conversationId} {

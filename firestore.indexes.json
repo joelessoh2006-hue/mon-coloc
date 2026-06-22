@@ -1,0 +1,45 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "visites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "bailleurId", "order": "ASCENDING" },
+        { "fieldPath": "creeLe", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "visites",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "studentId", "order": "ASCENDING" },
+        { "fieldPath": "creeLe", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "logements",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "statut", "order": "ASCENDING" },
+        { "fieldPath": "datePublication", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "role", "order": "ASCENDING" },
+        { "fieldPath": "estVerifie", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

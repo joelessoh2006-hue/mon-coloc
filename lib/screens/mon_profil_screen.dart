@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
+import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
 /// Écran "Mon Profil" complet avec sections en accordéon.
@@ -957,10 +958,41 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // ---------------------------------------------------------------------------
   Widget _buildSectionActions() {
     final theme = Theme.of(context);
+    final user = _utilisateur;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Bouton Admin (visible uniquement pour le rôle 'admin')
+        if (user?.role == 'admin') ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AdminDashboardScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.shield_rounded, size: 22),
+              label: const Text(
+                '🛡️ Accéder au Panel Admin',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
         // Bouton Enregistrer
         SizedBox(
           width: double.infinity,
