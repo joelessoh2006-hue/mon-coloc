@@ -1,9 +1,10 @@
 // Étape 1 : Authentification Firebase (Email, MDP) + Infos perso
-// Collecte : Nom, Prénom, Email, Mot de passe, Téléphone (+225), École/Université
+// Collecte : Nom, Prénom, Email, Mot de passe, Téléphone (+225), École/Université, Date de naissance
 // Le rôle est déjà sélectionné dans RoleSelectionScreen
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
 class RegisterStep1Screen extends StatefulWidget {
   final void Function({
@@ -13,6 +14,8 @@ class RegisterStep1Screen extends StatefulWidget {
     required String motDePasse,
     required String telephone,
     required String ecoleUniversite,
+    required DateTime? dateNaissance,
+    required int? age,
   }) onSuivant;
 
   const RegisterStep1Screen({super.key, required this.onSuivant});
@@ -33,6 +36,10 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
 
   String? _ecoleChoisie;
   bool _mdpVisible = false;
+
+  // Date de naissance
+  DateTime? _dateNaissance;
+  int? _ageCalcule;
 
   static const List<String> _listeEcoles = [
     'HEC Abidjan',
@@ -60,10 +67,56 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
     super.dispose();
   }
 
+  /// Ouvre le sélecteur de date natif Flutter
+  Future<void> _ouvrirDatePicker() async {
+    final now = DateTime.now();
+    final ageMin = now.year - 15; // Âge minimum : 15 ans
+    final dateMax = DateTime(ageMin, now.month, now.day);
+    final dateMin = DateTime(now.year - 100); // Max 100 ans en arrière
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateNaissance ?? DateTime(now.year - 18, now.month, now.day),
+      firstDate: dateMin,
+      lastDate: dateMax,
+      helpText: 'Sélectionnez votre date de naissance',
+      cancelText: 'Annuler',
+      confirmText: 'Confirmer',
+      locale: const Locale('fr', 'FR'),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _dateNaissance = picked;
+        _ageCalcule = _calculerAge(picked);
+      });
+    }
+  }
+
+  /// Calcule l'âge exact à partir d'une date de naissance
+  int _calculerAge(DateTime dateNaissance) {
+    final now = DateTime.now();
+    int age = now.year - dateNaissance.year;
+    if (now.month < dateNaissance.month ||
+        (now.month == dateNaissance.month && now.day < dateNaissance.day)) {
+      age--;
+    }
+    return age;
+  }
+
+  /// Formate la date au format JJ/MM/AAAA
+  String _formaterDate(DateTime date) {
+    return DateFormat('dd/MM/yyyy').format(date);
+  }
+
   void _soumettre() {
     if (!_cleForm.currentState!.validate()) return;
     if (_ecoleChoisie == null) {
       _afficherErreur('Veuillez sélectionner votre école ou université.');
+      return;
+    }
+    if (_dateNaissance == null) {
+      _afficherErreur('Veuillez sélectionner votre date de naissance.');
       return;
     }
 
@@ -84,6 +137,8 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
       motDePasse: _mdpCtrl.text,
       telephone: _telCtrl.text.trim(),
       ecoleUniversite: ecoleFinale,
+      dateNaissance: _dateNaissance,
+      age: _ageCalcule,
     );
   }
 
@@ -214,6 +269,61 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                     return null;
                   },
                 ),
+                const SizedBox(height: 16),
+
+                // Date de naissance (champ cliquable)
+                InkWell(
+                  onTap: _ouvrirDatePicker,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InputDecorator(
+                    decoration: _decorationChamp(
+                      label: 'Date de naissance',
+                      icone: Icons.calendar_month_outlined,
+                      theme: theme,
+                    ),
+                    child: Text(
+                      _dateNaissance != null
+                          ? _formaterDate(_dateNaissance!)
+                          : 'Sélectionnez votre date de naissance',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: _dateNaissance != null
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Affichage de l'âge calculé si la date est sélectionnée
+                if (_ageCalcule != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome_rounded,
+                          size: 20,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Vous avez $_ageCalcule ans',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
                 const SizedBox(height: 16),
 
                 // École / Université

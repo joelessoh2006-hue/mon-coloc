@@ -1,6 +1,7 @@
-// Étape 2 : Critères de logement
-// Collecte : Budget max en F CFA, Quartier(s) ciblé(s) à Abidjan, Statut logement,
-//            Sexe, Accepte mixité
+// Étape 2 : Critères de logement / Informations logement
+// Si "Je cherche un logement" : Budget max + Quartiers
+// Si "J'ai déjà un logement" : Quartier/Zone, Loyer total, Part loyer, Description
+// Le sexe et la mixité ont été déplacés vers l'Étape 3
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,8 +12,11 @@ class RegisterStep2Screen extends StatefulWidget {
     required double budgetMaxFCFA,
     required List<String> quartierCible,
     required StatutLogement statutLogement,
-    required Sexe sexe,
-    required bool accepteMixite,
+    // Champs "J'ai déjà un logement"
+    String? logementQuartier,
+    double? logementLoyerTotal,
+    double? logementPartColoc,
+    String? logementDescription,
   }) onSuivant;
 
   final VoidCallback onRetour;
@@ -32,11 +36,14 @@ class RegisterStep2Screen extends StatefulWidget {
 class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
   final _cleForm = GlobalKey<FormState>();
   final _budgetCtrl = TextEditingController();
-  double _budgetSliderValue = 100000;
+
+  // Contrôleurs pour le formulaire "J'ai déjà un logement"
+  final _logementQuartierCtrl = TextEditingController();
+  final _logementLoyerTotalCtrl = TextEditingController();
+  final _logementPartColocCtrl = TextEditingController();
+  final _logementDescriptionCtrl = TextEditingController();
 
   StatutLogement? _statutChoisi;
-  Sexe? _sexeChoisi;
-  bool _accepteMixite = false;
 
   // Multi-sélection des quartiers
   final Set<String> _quartiersSelectionnes = {};
@@ -92,6 +99,10 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
   @override
   void dispose() {
     _budgetCtrl.dispose();
+    _logementQuartierCtrl.dispose();
+    _logementLoyerTotalCtrl.dispose();
+    _logementPartColocCtrl.dispose();
+    _logementDescriptionCtrl.dispose();
     super.dispose();
   }
 
@@ -99,10 +110,6 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
     if (!_cleForm.currentState!.validate()) return;
     if (_statutChoisi == null) {
       _afficherErreur('Veuillez indiquer votre statut.');
-      return;
-    }
-    if (_sexeChoisi == null) {
-      _afficherErreur('Veuillez sélectionner votre sexe.');
       return;
     }
 
@@ -119,13 +126,23 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
     final quartiers =
         _indifferent ? <String>[] : _quartiersSelectionnes.toList();
 
-    widget.onSuivant(
-      budgetMaxFCFA: double.parse(_budgetCtrl.text.trim()),
-      quartierCible: quartiers,
-      statutLogement: _statutChoisi!,
-      sexe: _sexeChoisi!,
-      accepteMixite: _accepteMixite,
-    );
+    if (_statutChoisi == StatutLogement.aDejaUnLogement) {
+      widget.onSuivant(
+        budgetMaxFCFA: 0,
+        quartierCible: quartiers,
+        statutLogement: _statutChoisi!,
+        logementQuartier: _logementQuartierCtrl.text.trim(),
+        logementLoyerTotal: double.tryParse(_logementLoyerTotalCtrl.text.trim()),
+        logementPartColoc: double.tryParse(_logementPartColocCtrl.text.trim()),
+        logementDescription: _logementDescriptionCtrl.text.trim(),
+      );
+    } else {
+      widget.onSuivant(
+        budgetMaxFCFA: double.parse(_budgetCtrl.text.trim()),
+        quartierCible: quartiers,
+        statutLogement: _statutChoisi!,
+      );
+    }
   }
 
   void _afficherErreur(String message) {
@@ -265,64 +282,6 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
           }
           return null;
         },
-      ),
-      const SizedBox(height: 12),
-
-      // Slider du budget
-      Row(
-        children: [
-          const Icon(Icons.attach_money, size: 18, color: Color(0xFF6B7280)),
-          const SizedBox(width: 4),
-          Text(
-            'Ajustez avec le curseur',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 4),
-      SliderTheme(
-        data: SliderTheme.of(context).copyWith(
-          activeTrackColor: theme.colorScheme.primary,
-          inactiveTrackColor: theme.colorScheme.surfaceContainerHighest,
-          thumbColor: theme.colorScheme.primary,
-          overlayColor: theme.colorScheme.primary.withOpacity(0.12),
-          valueIndicatorColor: theme.colorScheme.primary,
-          valueIndicatorTextStyle: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        child: Slider(
-          min: 50000,
-          max: 1000000,
-          divisions: 19,
-          value: _budgetSliderValue,
-          label: '${_budgetSliderValue.toInt().toString()} F CFA',
-          onChanged: (val) {
-            setState(() {
-              _budgetSliderValue = val;
-              _budgetCtrl.text = val.toInt().toString();
-            });
-          },
-        ),
-      ),
-      Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            '${_budgetSliderValue.toInt().toString()} F CFA / mois',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: theme.colorScheme.primary,
-            ),
-          ),
-        ),
       ),
       const SizedBox(height: 28),
 
@@ -464,204 +423,119 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
           ),
         ),
       const SizedBox(height: 32),
+    ];
+  }
 
-      // ---- Sexe ----
+  // ---------------------------------------------------------------------------
+  // Section "J'ai déjà un logement" — Logement uniquement
+  // ---------------------------------------------------------------------------
+  List<Widget> _construireSectionDejaLogement(ThemeData theme) {
+    return [
+      // ---- Section Logement actuel ----
       Text(
-        'Sexe',
+        'Votre logement actuel',
         style: theme.textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w700,
           color: theme.colorScheme.onSurface,
         ),
       ),
-      const SizedBox(height: 8),
-      Row(
-        children: [
-          Expanded(
-            child: _carteSexe(
-              sexe: Sexe.homme,
-              icone: Icons.male_rounded,
-              label: 'Homme',
-              theme: theme,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _carteSexe(
-              sexe: Sexe.femme,
-              icone: Icons.female_rounded,
-              label: 'Femme',
-              theme: theme,
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 24),
-
-      // ---- Accepte la mixité ----
-      Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: _accepteMixite
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outlineVariant,
-          ),
-        ),
-        child: SwitchListTile(
-          title: Text(
-            'Acceptes-tu des colocataires du sexe opposé ?',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurface,
-            ),
-          ),
-          subtitle: Text(
-            _accepteMixite
-                ? 'Oui, je suis ouvert(e) à la mixité'
-                : 'Non, je préfère un colocataire du même sexe',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          secondary: Icon(
-            _accepteMixite
-                ? Icons.group_rounded
-                : Icons.person_pin_rounded,
-            color: _accepteMixite
-                ? theme.colorScheme.primary
-                : theme.colorScheme.outline,
-          ),
-          value: _accepteMixite,
-          activeColor: theme.colorScheme.primary,
-          onChanged: (val) => setState(() => _accepteMixite = val),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+      const SizedBox(height: 4),
+      Text(
+        'Parlez-nous de votre logement pour trouver le bon colocataire',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      const SizedBox(height: 32),
-    ];
-  }
-
-  // ---------------------------------------------------------------------------
-  // Section "J'ai déjà un logement" (Bientôt disponible)
-  // ---------------------------------------------------------------------------
-  List<Widget> _construireSectionDejaLogement(ThemeData theme) {
-    return [
       const SizedBox(height: 16),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFEF3C7).withOpacity(0.5),
-          border: Border.all(
-            color: const Color(0xFFFDE68A),
-            width: 1.5,
-          ),
-          borderRadius: BorderRadius.circular(16),
+
+      // Quartier/Zone
+      TextFormField(
+        controller: _logementQuartierCtrl,
+        decoration: _decorationChamp(
+          label: 'Quartier / Zone',
+          icone: Icons.location_on_outlined,
+          theme: theme,
         ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.construction_rounded,
-              size: 48,
-              color: const Color(0xFFD97706),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Formulaire de dépôt de logement',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF92400E),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Bientôt disponible avec le module Bailleur',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: const Color(0xFFA16207),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            Icon(
-              Icons.hourglass_bottom,
-              size: 28,
-              color: const Color(0xFFD97706).withOpacity(0.6),
-            ),
-          ],
-        ),
+        validator: (val) {
+          if (val == null || val.trim().isEmpty) {
+            return 'Veuillez indiquer le quartier ou la zone';
+          }
+          return null;
+        },
       ),
-      const SizedBox(height: 32),
+      const SizedBox(height: 14),
+
+      // Loyer mensuel total
+      TextFormField(
+        controller: _logementLoyerTotalCtrl,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+        ],
+        decoration: _decorationChamp(
+          label: 'Loyer mensuel total',
+          icone: Icons.payments_outlined,
+          theme: theme,
+          suffixText: 'F CFA',
+        ),
+        validator: (val) {
+          if (val == null || val.trim().isEmpty) {
+            return 'Veuillez entrer le loyer mensuel total';
+          }
+          final montant = double.tryParse(val.trim());
+          if (montant == null || montant <= 0) {
+            return 'Montant invalide';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 14),
+
+      // Part du loyer demandée au futur colocataire
+      TextFormField(
+        controller: _logementPartColocCtrl,
+        keyboardType: TextInputType.number,
+        inputFormatters: [
+          FilteringTextInputFormatter.digitsOnly,
+        ],
+        decoration: _decorationChamp(
+          label: 'Part du loyer demandée au futur colocataire',
+          icone: Icons.people_outline_rounded,
+          theme: theme,
+          suffixText: 'F CFA',
+        ),
+        validator: (val) {
+          if (val == null || val.trim().isEmpty) {
+            return 'Veuillez entrer la part du loyer pour le colocataire';
+          }
+          final montant = double.tryParse(val.trim());
+          if (montant == null || montant <= 0) {
+            return 'Montant invalide';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 14),
+
+      // Description rapide
+      TextFormField(
+        controller: _logementDescriptionCtrl,
+        maxLines: 3,
+        maxLength: 200,
+        decoration: _decorationChamp(
+          label: 'Description rapide du logement',
+          icone: Icons.description_outlined,
+          theme: theme,
+        ),
+        validator: (val) {
+          if (val == null || val.trim().isEmpty) {
+            return 'Veuillez décrire rapidement votre logement';
+          }
+          return null;
+        },
+      ),
+      const SizedBox(height: 28),
     ];
-  }
-
-  // ---------------------------------------------------------------------------
-  // Carte de sélection du sexe
-  // ---------------------------------------------------------------------------
-  Widget _carteSexe({
-    required Sexe sexe,
-    required IconData icone,
-    required String label,
-    required ThemeData theme,
-  }) {
-    final estSelectionne = _sexeChoisi == sexe;
-
-    return GestureDetector(
-      onTap: () => setState(() => _sexeChoisi = sexe),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-        decoration: BoxDecoration(
-          color: estSelectionne
-              ? theme.colorScheme.primary.withOpacity(0.06)
-              : Colors.white,
-          border: Border.all(
-            color: estSelectionne
-                ? theme.colorScheme.primary
-                : const Color(0xFFE5E7EB),
-            width: estSelectionne ? 2 : 1,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: estSelectionne
-                  ? theme.colorScheme.primary.withOpacity(0.1)
-                  : Colors.black.withOpacity(0.04),
-              blurRadius: estSelectionne ? 8 : 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Icon(
-              icone,
-              size: 32,
-              color: estSelectionne
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outline,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: estSelectionne
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   // ---------------------------------------------------------------------------

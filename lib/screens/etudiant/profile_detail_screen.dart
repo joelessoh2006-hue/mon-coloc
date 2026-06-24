@@ -7,6 +7,9 @@ import 'package:mon_coloc/services/chat_service.dart';
 
 /// Écran de profil détaillé d'un étudiant.
 /// Accessible depuis l'onglet "Découvrir" en cliquant sur "Voir le profil".
+///
+/// Si l'étudiant a déjà un logement (aDejaUnLogement == true),
+/// affiche les informations du logement avec un carrousel de photos.
 class ProfileDetailScreen extends StatefulWidget {
   /// Données de l'étudiant ciblé (provenant du matching)
   final Map<String, dynamic> userData;
@@ -26,6 +29,9 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
   /// Chargement en cours
   bool _chargement = true;
+
+  /// Index de la photo du logement active dans le carrousel
+  int _photoIndex = 0;
 
   @override
   void initState() {
@@ -63,6 +69,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         accepteMixite: widget.userData['accepteMixite'] as bool? ?? false,
         zoneRecherche: widget.userData['zoneRecherche'] as String?,
         typeLogement: widget.userData['typeLogement'] as String?,
+        dateNaissance: widget.userData['dateNaissance'] != null
+            ? (widget.userData['dateNaissance'] as Timestamp).toDate()
+            : null,
+        age: widget.userData['age'] as int?,
         proprete: Proprete.values.firstWhere(
           (e) => e.name == widget.userData['proprete'],
           orElse: () => Proprete.propre,
@@ -86,6 +96,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           orElse: () => HoraireRevision.flexible,
         ),
         niveauSociabilite: widget.userData['niveauSociabilite'] as int?,
+        aDejaUnLogement: widget.userData['aDejaUnLogement'] as bool? ?? false,
+        logementQuartier: widget.userData['logementQuartier'] as String?,
+        logementLoyerTotal: (widget.userData['logementLoyerTotal'] as num?)?.toDouble(),
+        logementPartColoc: (widget.userData['logementPartColoc'] as num?)?.toDouble(),
+        logementDescription: widget.userData['logementDescription'] as String?,
+        logementPhotos: UserModel.safeStringList(widget.userData['logementPhotos']),
+        habitudesQuotidiennes: widget.userData['habitudesQuotidiennes'] as String?,
+        genreColocataireRecherche: widget.userData['genreColocataireRecherche'] as String?,
         dateInscription: widget.userData['dateInscription'] != null
             ? (widget.userData['dateInscription'] as Timestamp).toDate()
             : DateTime.now(),
@@ -162,6 +180,17 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
             const SizedBox(height: 8),
 
+            // --- Section Logement (si l'étudiant a déjà un logement) ---
+            if (_user.aDejaUnLogement) ...[
+              _buildSection(
+                theme: theme,
+                icon: Icons.home_rounded,
+                title: 'Son logement',
+                child: _buildLogementSection(theme),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             // --- Section Habitudes de vie ---
             _buildSection(
               theme: theme,
@@ -218,7 +247,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
   Widget _buildHeader(ThemeData theme) {
     final prenom = _user.prenom;
     final nom = _user.nom;
-    final age = _calculerAge(_user.dateInscription);
+    final age = _user.age; // Âge dynamique depuis Firestore
     final ecole = _user.ecoleUniversite;
     final filiere = _user.filiere;
     final photoUrl = _user.photoUrl;
@@ -375,6 +404,204 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           const SizedBox(height: 20),
         ],
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION LOGEMENT (pour étudiants ayant déjà un logement)
+  // ---------------------------------------------------------------------------
+  Widget _buildLogementSection(ThemeData theme) {
+    final photos = _user.logementPhotos;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Carrousel de photos
+          if (photos.isNotEmpty) ...[
+            SizedBox(
+              height: 220,
+              child: Stack(
+                children: [
+                  PageView.builder(
+                    onPageChanged: (index) {
+                      setState(() => _photoIndex = index);
+                    },
+                    itemCount: photos.length,
+                    itemBuilder: (context, index) {
+                      return Container(
+                        margin: const EdgeInsets.only(right: 0),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          image: DecorationImage(
+                            image: NetworkImage(photos[index]),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  // Indicateur de page
+                  Positioned(
+                    bottom: 12,
+                    left: 0,
+                    right: 0,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        photos.length,
+                        (index) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: _photoIndex == index ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: _photoIndex == index
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Pas de photos
+          if (photos.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  Icon(Icons.photo_library_outlined,
+                      size: 48, color: Colors.grey[300]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Aucune photo du logement disponible',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (photos.isEmpty) const SizedBox(height: 16),
+
+          // Quartier
+          if (_user.logementQuartier != null &&
+              _user.logementQuartier!.isNotEmpty) ...[
+            _buildInfoRow(
+              icon: Icons.location_on_rounded,
+              label: 'Quartier',
+              value: _user.logementQuartier!,
+              color: const Color(0xFF7C3AED),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Loyer total
+          if (_user.logementLoyerTotal != null &&
+              _user.logementLoyerTotal! > 0) ...[
+            _buildInfoRow(
+              icon: Icons.monetization_on_rounded,
+              label: 'Loyer total',
+              value: '${_formatMontant(_user.logementLoyerTotal!)} FCFA/mois',
+              color: const Color(0xFF00897B),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Part coloc
+          if (_user.logementPartColoc != null &&
+              _user.logementPartColoc! > 0) ...[
+            _buildInfoRow(
+              icon: Icons.money_off_rounded,
+              label: 'Part du colocataire',
+              value: '${_formatMontant(_user.logementPartColoc!)} FCFA/mois',
+              color: const Color(0xFF1565C0),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          // Description
+          if (_user.logementDescription != null &&
+              _user.logementDescription!.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _user.logementDescription!,
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF37474F),
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, size: 20, color: color),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[500],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E3A5F),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -731,15 +958,12 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
   /// Calcule l'âge approximatif à partir d'une date d'inscription.
   int? _calculerAge(DateTime dateInscription) {
-    // On utilise la date d'inscription comme approximation
-    // (l'âge réel n'est pas stocké dans le modèle)
     final now = DateTime.now();
     final age = now.year - dateInscription.year;
     if (now.month < dateInscription.month ||
         (now.month == dateInscription.month && now.day < dateInscription.day)) {
       return age - 1;
     }
-    // On ajoute ~18 ans comme base (âge étudiant typique)
     return age >= 0 ? age + 18 : null;
   }
 
@@ -782,6 +1006,28 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     }
     if (montant >= 1000) {
       return '${(montant / 1000).toStringAsFixed(0)} ${(montant % 1000).toStringAsFixed(0).padLeft(3, '0')}';
+    }
+    return montant.toStringAsFixed(0);
+  }
+
+  /// Formate un montant avec séparateur de milliers
+  String _formatMontant(double montant) {
+    if (montant >= 1000000) {
+      return '${(montant / 1000000).toStringAsFixed(1)}M';
+    }
+    if (montant >= 1000) {
+      final entier = montant.toInt();
+      final str = entier.toString();
+      final buffer = StringBuffer();
+      int count = 0;
+      for (int i = str.length - 1; i >= 0; i--) {
+        if (count > 0 && count % 3 == 0) {
+          buffer.write(' ');
+        }
+        buffer.write(str[i]);
+        count++;
+      }
+      return buffer.toString().split('').reversed.join('');
     }
     return montant.toStringAsFixed(0);
   }

@@ -84,4 +84,28 @@ class UserService {
     final snapshot = await uploadTask;
     return await snapshot.ref.getDownloadURL();
   }
+
+  /// Téléverse une photo de logement vers Firebase Storage.
+  Future<String> televerserPhotoLogement({
+    required String uid,
+    required String cheminFichier,
+    required int index,
+  }) async {
+    final ref = _storage.ref().child('logements_photos/${uid}_photo_$index.jpg');
+    final uploadTask = ref.putFile(File(cheminFichier));
+    final snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
+  }
+
+  /// Téléverse une photo de logement (bytes) pour Flutter Web.
+  Future<String> televerserPhotoLogementBytes({
+    required String uid,
+    required Uint8List bytes,
+    required int index,
+  }) async {
+    final ref = _storage.ref().child('logements_photos/${uid}_photo_$index.jpg');
+    final uploadTask = ref.putData(bytes);
+    final snapshot = await uploadTask;
+    return await snapshot.ref.getDownloadURL();
+  }
 }

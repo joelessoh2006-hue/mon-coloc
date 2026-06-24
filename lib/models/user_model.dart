@@ -89,6 +89,28 @@ class UserModel {
   /// Niveau de sociabilité (1-5)
   final int? niveauSociabilite;
 
+  /// Indique si l'étudiant a déjà un logement (true) ou en cherche un (false)
+  final bool aDejaUnLogement;
+
+  // Infos logement (uniquement si aDejaUnLogement == true)
+  final String? logementQuartier; // Quartier/Zone du logement actuel
+  final double? logementLoyerTotal; // Loyer mensuel total
+  final double? logementPartColoc; // Part du loyer demandée au futur colocataire
+  final String? logementDescription; // Description rapide du logement
+
+  // Photos du logement (Firebase Storage URLs, uniquement si aDejaUnLogement == true)
+  final List<String> logementPhotos;
+
+  // Mode de vie & Matching (uniquement si aDejaUnLogement == true)
+  final String? habitudesQuotidiennes; // "Calme" ou "Dynamique"
+  final String? genreColocataireRecherche; // "Homme", "Femme" ou "Peu importe"
+
+  /// Date de naissance (optionnelle, pour affichage âge dynamique)
+  final DateTime? dateNaissance;
+
+  /// Âge calculé à partir de la date de naissance (stocké en cache pour requêtes)
+  final int? age;
+
   final DateTime dateInscription;
 
   UserModel({
@@ -122,6 +144,16 @@ class UserModel {
     required this.besoinSilence,
     required this.horaireRevision,
     this.niveauSociabilite,
+    this.aDejaUnLogement = false,
+    this.logementQuartier,
+    this.logementLoyerTotal,
+    this.logementPartColoc,
+    this.logementDescription,
+    this.logementPhotos = const [],
+    this.habitudesQuotidiennes,
+    this.genreColocataireRecherche,
+    this.dateNaissance,
+    this.age,
     DateTime? dateInscription,
   }) : dateInscription = dateInscription ?? DateTime.now();
 
@@ -158,6 +190,16 @@ class UserModel {
       'besoinSilence': besoinSilence,
       'horaireRevision': horaireRevision.name,
       'niveauSociabilite': niveauSociabilite,
+      'aDejaUnLogement': aDejaUnLogement,
+      'logementQuartier': logementQuartier,
+      'logementLoyerTotal': logementLoyerTotal,
+      'logementPartColoc': logementPartColoc,
+      'logementDescription': logementDescription,
+      'logementPhotos': logementPhotos,
+      'habitudesQuotidiennes': habitudesQuotidiennes,
+      'genreColocataireRecherche': genreColocataireRecherche,
+      'dateNaissance': dateNaissance != null ? Timestamp.fromDate(dateNaissance!) : null,
+      'age': age,
       'dateInscription': Timestamp.fromDate(dateInscription),
     };
   }
@@ -168,6 +210,17 @@ class UserModel {
     if (value is List) return List<String>.from(value.map((e) => e.toString()));
     if (value is String) return [value];
     return [];
+  }
+
+  /// Calcule l'âge exact à partir d'une date de naissance.
+  static int calculerAge(DateTime dateNaissance) {
+    final now = DateTime.now();
+    int age = now.year - dateNaissance.year;
+    if (now.month < dateNaissance.month ||
+        (now.month == dateNaissance.month && now.day < dateNaissance.day)) {
+      age--;
+    }
+    return age;
   }
 
   /// Crée un UserModel à partir d'un DocumentSnapshot Firestore
@@ -222,6 +275,18 @@ class UserModel {
         orElse: () => HoraireRevision.flexible,
       ),
       niveauSociabilite: data['niveauSociabilite'] as int?,
+      aDejaUnLogement: data['aDejaUnLogement'] as bool? ?? false,
+      logementQuartier: data['logementQuartier'] as String?,
+      logementLoyerTotal: (data['logementLoyerTotal'] as num?)?.toDouble(),
+      logementPartColoc: (data['logementPartColoc'] as num?)?.toDouble(),
+      logementDescription: data['logementDescription'] as String?,
+      logementPhotos: safeStringList(data['logementPhotos']),
+      habitudesQuotidiennes: data['habitudesQuotidiennes'] as String?,
+      genreColocataireRecherche: data['genreColocataireRecherche'] as String?,
+      dateNaissance: data['dateNaissance'] != null
+          ? (data['dateNaissance'] as Timestamp).toDate()
+          : null,
+      age: data['age'] as int?,
       dateInscription: data['dateInscription'] != null
           ? (data['dateInscription'] as Timestamp).toDate()
           : DateTime.now(),
@@ -260,6 +325,16 @@ class UserModel {
     bool? besoinSilence,
     HoraireRevision? horaireRevision,
     int? niveauSociabilite,
+    bool? aDejaUnLogement,
+    String? logementQuartier,
+    double? logementLoyerTotal,
+    double? logementPartColoc,
+    String? logementDescription,
+    List<String>? logementPhotos,
+    String? habitudesQuotidiennes,
+    String? genreColocataireRecherche,
+    DateTime? dateNaissance,
+    int? age,
     DateTime? dateInscription,
   }) {
     return UserModel(
@@ -293,6 +368,16 @@ class UserModel {
       besoinSilence: besoinSilence ?? this.besoinSilence,
       horaireRevision: horaireRevision ?? this.horaireRevision,
       niveauSociabilite: niveauSociabilite ?? this.niveauSociabilite,
+      aDejaUnLogement: aDejaUnLogement ?? this.aDejaUnLogement,
+      logementQuartier: logementQuartier ?? this.logementQuartier,
+      logementLoyerTotal: logementLoyerTotal ?? this.logementLoyerTotal,
+      logementPartColoc: logementPartColoc ?? this.logementPartColoc,
+      logementDescription: logementDescription ?? this.logementDescription,
+      logementPhotos: logementPhotos ?? this.logementPhotos,
+      habitudesQuotidiennes: habitudesQuotidiennes ?? this.habitudesQuotidiennes,
+      genreColocataireRecherche: genreColocataireRecherche ?? this.genreColocataireRecherche,
+      dateNaissance: dateNaissance ?? this.dateNaissance,
+      age: age ?? this.age,
       dateInscription: dateInscription ?? this.dateInscription,
     );
   }

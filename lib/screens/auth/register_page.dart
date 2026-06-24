@@ -46,14 +46,25 @@ class _RegisterPageState extends State<RegisterPage> {
   String _motDePasse = '';
   String _telephone = '';
   String _ecoleUniversite = '';
+  DateTime? _dateNaissance;
+  int? _age;
 
-  // Données spécifiques Étudiant (étapes 2 et 3)
+  // Données spécifiques Étudiant (étape 2)
   double _budgetMaxFCFA = 0;
   List<String> _quartierCible = [];
   StatutLogement _statutLogement = StatutLogement.chercheUnLogement;
+
+  // Données "J'ai déjà un logement" (étape 2)
+  String _logementQuartier = '';
+  double _logementLoyerTotal = 0;
+  double _logementPartColoc = 0;
+  String _logementDescription = '';
+
+  // Données étape 3 : Sexe & Préférence de mixité
   Sexe _sexe = Sexe.homme;
   bool _accepteMixite = false;
 
+  // Données étape 3 : Habitudes de vie
   Proprete _proprete = Proprete.propre;
   RythmeDeVie _rythmeDeVie = RythmeDeVie.leveTot;
   bool _fumeur = false;
@@ -90,6 +101,8 @@ class _RegisterPageState extends State<RegisterPage> {
     required String motDePasse,
     required String telephone,
     required String ecoleUniversite,
+    required DateTime? dateNaissance,
+    required int? age,
   }) {
     setState(() {
       _nom = nom;
@@ -98,6 +111,8 @@ class _RegisterPageState extends State<RegisterPage> {
       _motDePasse = motDePasse;
       _telephone = telephone;
       _ecoleUniversite = ecoleUniversite;
+      _dateNaissance = dateNaissance;
+      _age = age;
     });
 
     // Étudiant → va à l'étape 2 (critères de logement)
@@ -109,21 +124,27 @@ class _RegisterPageState extends State<RegisterPage> {
     required double budgetMaxFCFA,
     required List<String> quartierCible,
     required StatutLogement statutLogement,
-    required Sexe sexe,
-    required bool accepteMixite,
+    String? logementQuartier,
+    double? logementLoyerTotal,
+    double? logementPartColoc,
+    String? logementDescription,
   }) {
     setState(() {
       _budgetMaxFCFA = budgetMaxFCFA;
       _quartierCible = quartierCible;
       _statutLogement = statutLogement;
-      _sexe = sexe;
-      _accepteMixite = accepteMixite;
+      _logementQuartier = logementQuartier ?? '';
+      _logementLoyerTotal = logementLoyerTotal ?? 0;
+      _logementPartColoc = logementPartColoc ?? 0;
+      _logementDescription = logementDescription ?? '';
     });
     _allerPage(2);
   }
 
   // Étape 3 (Étudiant) → Finalise l'inscription
   Future<void> _surEtape3({
+    required Sexe sexe,
+    required bool accepteMixite,
     required Proprete proprete,
     required RythmeDeVie rythmeDeVie,
     required bool fumeur,
@@ -136,6 +157,8 @@ class _RegisterPageState extends State<RegisterPage> {
     required HoraireRevision horaireRevision,
   }) async {
     setState(() {
+      _sexe = sexe;
+      _accepteMixite = accepteMixite;
       _proprete = proprete;
       _rythmeDeVie = rythmeDeVie;
       _fumeur = fumeur;
@@ -168,6 +191,8 @@ class _RegisterPageState extends State<RegisterPage> {
             "L'utilisateur Firebase est null après la création du compte.");
       }
 
+      final aDejaUnLogement = _statutLogement == StatutLogement.aDejaUnLogement;
+
       // Étudiant : inscription complète avec toutes les données
       final user = UserModel(
         uid: firebaseUser.uid,
@@ -193,6 +218,13 @@ class _RegisterPageState extends State<RegisterPage> {
         soireesAmis: _soireesAmis,
         besoinSilence: _besoinSilence,
         horaireRevision: _horaireRevision,
+        aDejaUnLogement: aDejaUnLogement,
+        logementQuartier: aDejaUnLogement ? _logementQuartier : null,
+        logementLoyerTotal: aDejaUnLogement ? _logementLoyerTotal : null,
+        logementPartColoc: aDejaUnLogement ? _logementPartColoc : null,
+        logementDescription: aDejaUnLogement ? _logementDescription : null,
+        dateNaissance: _dateNaissance,
+        age: _age,
       );
 
       await _userService.sauvegarderUtilisateur(user);
@@ -282,7 +314,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     ecoleUniversite: _ecoleUniversite,
                   ),
 
-                  // Étape 3 : habitudes de vie
+                  // Étape 3 : habitudes de vie + sexe + mixité
                   RegisterStep3Screen(
                     onTerminer: _surEtape3,
                     onRetour: () => _allerPage(1),

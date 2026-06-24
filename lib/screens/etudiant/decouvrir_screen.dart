@@ -7,6 +7,10 @@ import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
 import 'package:mon_coloc/services/matching_service.dart';
 
 /// Écran "Découvrir" — Affiche les profils étudiants triés par score de matching.
+///
+/// S'adapte selon le statut logement de l'utilisateur connecté :
+/// - Étudiant SANS logement : affiche 2 sous-onglets (sans logement / avec logement)
+/// - Étudiant AVEC logement : n'affiche que les étudiants sans logement
 class DecouvrirScreen extends StatefulWidget {
   const DecouvrirScreen({super.key});
 
@@ -14,12 +18,16 @@ class DecouvrirScreen extends StatefulWidget {
   State<DecouvrirScreen> createState() => _DecouvrirScreenState();
 }
 
-class _DecouvrirScreenState extends State<DecouvrirScreen> {
+class _DecouvrirScreenState extends State<DecouvrirScreen>
+    with SingleTickerProviderStateMixin {
   final MatchingService _matchingService = MatchingService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Utilisateur connecté (pour comparer les habitudes avec chaque profil)
+  /// Utilisateur connecté
   UserModel? _currentUserModel;
+
+  /// Index du sous-onglet actif (0 = sans logement, 1 = avec logement)
+  int _sousOngletActif = 0;
 
   @override
   void initState() {
@@ -59,8 +67,121 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
       );
     }
 
+    final theme = Theme.of(context);
+
+    // Si l'utilisateur a déjà un logement : pas de sous-onglets, affiche uniquement les étudiants sans logement
+    if (_currentUserModel?.aDejaUnLogement == true) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text(
+            'Découvrir',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          foregroundColor: const Color(0xFF1E3A5F),
+        ),
+        body: _buildStudentList(currentUser.uid, filtrerSansLogement: true),
+      );
+    }
+
+    // Étudiant SANS logement : affiche les sous-onglets
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Découvrir',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: const Color(0xFF1E3A5F),
+      ),
+      body: Column(
+        children: [
+          // Sous-onglets
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.grey.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _sousOngletActif = 0),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _sousOngletActif == 0
+                            ? theme.colorScheme.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Sans logement',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _sousOngletActif == 0
+                              ? Colors.white
+                              : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () => setState(() => _sousOngletActif = 1),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _sousOngletActif == 1
+                            ? theme.colorScheme.primary
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Avec logement',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: _sousOngletActif == 1
+                              ? Colors.white
+                              : Colors.grey[600],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Liste des étudiants filtrée
+          Expanded(
+            child: _sousOngletActif == 0
+                ? _buildStudentList(currentUser.uid, filtrerSansLogement: true)
+                : _buildStudentList(currentUser.uid, filtrerAvecLogement: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit la liste des étudiants avec filtre optionnel sur le statut logement
+  Widget _buildStudentList(String currentUserId,
+      {bool? filtrerSansLogement, bool? filtrerAvecLogement}) {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _matchingService.getMatchedStudents(currentUser.uid),
+      future: _matchingService.getMatchedStudents(
+        currentUserId,
+        filtrerParStatutLogement:
+            filtrerSansLogement == true ? false : (filtrerAvecLogement == true ? true : null),
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
@@ -100,7 +221,8 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.search_off_rounded, size: 80, color: Colors.grey[300]),
+                  Icon(Icons.search_off_rounded,
+                      size: 80, color: Colors.grey[300]),
                   const SizedBox(height: 24),
                   const Text(
                     'Aucun profil étudiant vérifié n\'est disponible pour le moment.',
@@ -141,6 +263,7 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
     final score = studentData['scoreMatching'] as int? ?? 0;
     final prenom = studentData['prenom'] as String? ?? 'Inconnu';
     final ecole = studentData['ecoleUniversite'] as String? ?? '';
+    final aDejaUnLogement = studentData['aDejaUnLogement'] as bool? ?? false;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -201,6 +324,25 @@ class _DecouvrirScreenState extends State<DecouvrirScreen> {
                                   color: Colors.grey[600],
                                 ),
                                 overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      // Badge indiquant le statut logement
+                      if (aDejaUnLogement) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.home_rounded,
+                                size: 14, color: Colors.green[600]),
+                            const SizedBox(width: 4),
+                            Text(
+                              'A un logement',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.green[700],
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],

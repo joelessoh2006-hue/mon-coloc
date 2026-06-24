@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 import 'package:mon_coloc/screens/bailleur/bailleur_inbox_screen.dart';
@@ -10,11 +11,15 @@ import 'package:mon_coloc/screens/etudiant/decouvrir_screen.dart';
 import 'package:mon_coloc/screens/etudiant/etudiant_messagerie_screen.dart';
 import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_equipe_screen.dart';
+import 'package:mon_coloc/screens/etudiant/mon_logement_screen.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 
 /// Écran d'accueil principal.
 /// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
+/// Pour les étudiants, s'adapte aussi selon `aDejaUnLogement` :
+/// - Si true : onglet "Logements" → "Mon logement"
+/// - Si false : onglet "Logements" normal (liste des logements disponibles)
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -42,6 +47,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Nombre de conversations avec messages non lus
   int _nonLuCount = 0;
 
+  /// Indique si l'étudiant connecté a déjà un logement
+  bool _aDejaUnLogement = false;
+
+  /// Étudiant chargé complètement
+  UserModel? _currentUser;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +78,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         _role = data['role'] as String? ?? 'etudiant';
+        _aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
+
+        // Construire l'UserModel complet
+        _currentUser = UserModel.fromFirestore(doc);
       } else {
         _role = 'etudiant';
       }
@@ -76,6 +91,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // Démarrer l'écoute des messages non lus si étudiant
       if (_role == 'etudiant') {
         _ecouterNonLus();
+        _ecouterChangementsUtilisateur();
       }
     } catch (e) {
       debugPrint('Erreur récupération rôle : $e');
@@ -89,10 +105,25 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Écoute en temps réel les changements de l'utilisateur (pour mettre à jour aDejaUnLogement)
+  void _ecouterChangementsUtilisateur() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    _firestore.collection('users').doc(uid).snapshots().listen((doc) {
+      if (!mounted || !doc.exists) return;
+      final data = doc.data() as Map<String, dynamic>;
+      final aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
+      if (aDejaUnLogement != _aDejaUnLogement) {
+        setState(() {
+          _aDejaUnLogement = aDejaUnLogement;
+        });
+      }
+    });
+  }
+
   /// Écoute en temps réel toutes les conversations de l'utilisateur
   /// et calcule le nombre de non lues côté client.
-  /// Cette approche est robuste même quand le champ `nonLuPar`
-  /// n'existe pas encore sur certains documents.
   void _ecouterNonLus() {
     try {
       final uid = _auth.currentUser?.uid;
@@ -105,7 +136,6 @@ class _HomeScreenState extends State<HomeScreen> {
           final data = doc.data() as Map<String, dynamic>?;
           if (data == null) continue;
           final nonLuPar = data['nonLuPar'] as List<dynamic>?;
-          // Si nonLuPar existe et contient l'UID, c'est un non lu
           if (nonLuPar != null && nonLuPar.contains(uid)) {
             count++;
           }
@@ -115,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       });
     } catch (_) {
-      // Silencieux — l'utilisateur peut ne pas être connecté
+      // Silencieux
     }
   }
 
@@ -156,7 +186,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       _construirePageDecouvrir(),
       _construirePageMessagerie(),
-      _construirePageLogements(),
+      // Si l'étudiant a déjà un logement → "Mon logement", sinon → "Logements"
+      _aDejaUnLogement ? _construirePageMonLogement() : _construirePageLogements(),
       _construirePageMonEquipe(),
       _construirePageMonProfil(),
     ];
@@ -178,9 +209,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: _buildMessagerieIconWithBadge(),
             label: 'Messagerie',
           ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home_rounded),
-            label: 'Logements',
+          BottomNavigationBarItem(
+            icon: Icon(_aDejaUnLogement
+                ? Icons.home_work_rounded
+                : Icons.home_rounded),
+            label: _aDejaUnLogement ? 'Mon logement' : 'Logements',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.group_rounded),
@@ -219,6 +252,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _construirePageLogements() {
     return const LogementsListScreen();
+  }
+
+  Widget _construirePageMonLogement() {
+    return const MonLogementScreen();
   }
 
   Widget _construirePageMonProfil() {

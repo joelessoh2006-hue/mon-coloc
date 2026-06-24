@@ -3,6 +3,8 @@
 // PAS de champ École/Université ni de budget
 // Après validation → redirige vers RegisterBailleurDocsScreen
 
+import 'dart:typed_data';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -41,6 +43,13 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
   String _motDePasse = '';
   String _telephone = '';
 
+  // Fichiers sélectionnés (conservés pour l'envoi final)
+  List<FichierDocument?> _fichiersDocuments = [null, null, null];
+
+  void _onFichiersChanges(List<FichierDocument?> fichiers) {
+    _fichiersDocuments = fichiers;
+  }
+
   @override
   void dispose() {
     _nomCtrl.dispose();
@@ -68,6 +77,7 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
         builder: (_) => RegisterBailleurDocsScreen(
           onFinaliser: _finaliserInscription,
           onRetour: () => Navigator.of(context).pop(),
+          onFichiersChanges: _onFichiersChanges,
         ),
       ),
     );

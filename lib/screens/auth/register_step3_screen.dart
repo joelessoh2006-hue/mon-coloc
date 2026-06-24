@@ -1,11 +1,13 @@
-// Étape 3 : Habitudes de vie pour la compatibilité
-// Collecte : Propreté, Rythme de vie, Fumeur, Animaux, Bruit, Études
+// Étape 3 : Habitudes de vie pour la compatibilité + Sexe & Préférence de mixité
+// Collecte : Propreté, Rythme de vie, Fumeur, Animaux, Bruit, Études, Sexe, Accepte mixité
 
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
 
 class RegisterStep3Screen extends StatefulWidget {
   final void Function({
+    required Sexe sexe,
+    required bool accepteMixite,
     required Proprete proprete,
     required RythmeDeVie rythmeDeVie,
     required bool fumeur,
@@ -31,6 +33,10 @@ class RegisterStep3Screen extends StatefulWidget {
 }
 
 class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
+  // Sexe & Préférence de mixité
+  Sexe? _sexeChoisi;
+  bool _accepteMixite = false;
+
   // Sections existantes
   Proprete? _propreteChoisie;
   RythmeDeVie? _rythmeChoisi;
@@ -56,6 +62,10 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
   }
 
   void _soumettre() {
+    if (_sexeChoisi == null) {
+      _afficherErreur('Veuillez sélectionner votre sexe.');
+      return;
+    }
     if (_propreteChoisie == null) {
       _afficherErreur('Veuillez indiquer votre niveau de propreté.');
       return;
@@ -74,6 +84,8 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
     }
 
     widget.onTerminer(
+      sexe: _sexeChoisi!,
+      accepteMixite: _accepteMixite,
       proprete: _propreteChoisie!,
       rythmeDeVie: _rythmeChoisi!,
       fumeur: _fumeurChoisi!,
@@ -121,6 +133,85 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                     // ---- Message d'avertissement ----
                     _construireMessageAvertissement(theme),
                     const SizedBox(height: 28),
+
+                    // ---- Sexe de l'utilisateur ----
+                    Text(
+                      'Sexe de l\'utilisateur',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _carteSexe(
+                            sexe: Sexe.homme,
+                            icone: Icons.male_rounded,
+                            label: 'Homme',
+                            theme: theme,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _carteSexe(
+                            sexe: Sexe.femme,
+                            icone: Icons.female_rounded,
+                            label: 'Femme',
+                            theme: theme,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // ---- Préférence de colocation mixte ----
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        side: BorderSide(
+                          color: _accepteMixite
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: SwitchListTile(
+                        title: Text(
+                          'Acceptez-vous les colocataires du sexe opposé ?',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _accepteMixite
+                              ? 'Oui, je suis ouvert(e) à la mixité'
+                              : 'Non, je préfère un colocataire du même sexe',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        secondary: Icon(
+                          _accepteMixite
+                              ? Icons.group_rounded
+                              : Icons.person_pin_rounded,
+                          color: _accepteMixite
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.outline,
+                        ),
+                        value: _accepteMixite,
+                        activeColor: theme.colorScheme.primary,
+                        onChanged: (val) => setState(() => _accepteMixite = val),
+                        contentPadding:
+                            const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
 
                     // ---- Propreté ----
                     Text(
@@ -494,6 +585,70 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
   }
 
   // ---------------------------------------------------------------------------
+  // Carte de sélection du sexe
+  // ---------------------------------------------------------------------------
+  Widget _carteSexe({
+    required Sexe sexe,
+    required IconData icone,
+    required String label,
+    required ThemeData theme,
+  }) {
+    final estSelectionne = _sexeChoisi == sexe;
+
+    return GestureDetector(
+      onTap: () => setState(() => _sexeChoisi = sexe),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        decoration: BoxDecoration(
+          color: estSelectionne
+              ? theme.colorScheme.primary.withOpacity(0.06)
+              : Colors.white,
+          border: Border.all(
+            color: estSelectionne
+                ? theme.colorScheme.primary
+                : const Color(0xFFE5E7EB),
+            width: estSelectionne ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(
+              color: estSelectionne
+                  ? theme.colorScheme.primary.withOpacity(0.1)
+                  : Colors.black.withOpacity(0.04),
+              blurRadius: estSelectionne ? 8 : 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icone,
+              size: 32,
+              color: estSelectionne
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: estSelectionne
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Message d'avertissement
   // ---------------------------------------------------------------------------
   Widget _construireMessageAvertissement(ThemeData theme) {
@@ -696,7 +851,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
         ),
         const SizedBox(height: 16),
         Text(
-          'Vos habitudes de vie',
+          'Vos habitudes de vie & Profil',
           style: theme.textTheme.headlineSmall?.copyWith(
             fontWeight: FontWeight.w800,
             color: theme.colorScheme.onSurface,

@@ -13,10 +13,14 @@ class MatchingService {
   /// Récupère la liste des étudiants triés par score de compatibilité
   /// avec l'utilisateur connecté identifié par [currentUserId].
   ///
+  /// [filtrerParStatutLogement] : si fourni, filtre les étudiants selon qu'ils
+  /// ont déjà un logement (true) ou en cherchent un (false).
+  ///
   /// Retourne une liste de profils (Map) enrichis d'un champ `scoreMatching`
   /// (entier entre 0 et 100), triée du score le plus élevé au plus faible.
   Future<List<Map<String, dynamic>>> getMatchedStudents(
-      String currentUserId) async {
+      String currentUserId,
+      {bool? filtrerParStatutLogement}) async {
     // 1. Récupérer le profil de l'utilisateur connecté
     final currentUserDoc = await _usersCollection.doc(currentUserId).get();
     if (!currentUserDoc.exists) {
@@ -30,12 +34,23 @@ class MatchingService {
         .where('estVerifie', isEqualTo: true)
         .get();
 
-    // 3. Filtrer pour exclure l'utilisateur connecté et calculer les scores
+    // 3. Filtrer pour exclure l'utilisateur connecté, appliquer filtre statut logement, et calculer les scores
     final List<Map<String, dynamic>> matchedStudents = [];
 
     for (final doc in querySnapshot.docs) {
       // Exclure l'utilisateur connecté
       if (doc.id == currentUserId) continue;
+
+      // Appliquer le filtre optionnel sur aDejaUnLogement
+      // Utilisation sécurisée : on vérifie d'abord si le champ existe via data()
+      // pour éviter l'erreur "Bad state: field does not exist" sur les anciens profils
+      if (filtrerParStatutLogement != null) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final bool aDejaUnLogement = data?.containsKey('aDejaUnLogement') == true
+            ? data!['aDejaUnLogement'] == true
+            : false;
+        if (aDejaUnLogement != filtrerParStatutLogement) continue;
+      }
 
       final student = UserModel.fromFirestore(doc);
       final score = _calculerScoreAffinite(currentUser, student);

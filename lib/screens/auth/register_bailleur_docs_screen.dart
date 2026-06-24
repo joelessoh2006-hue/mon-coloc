@@ -1,7 +1,23 @@
 // Écran de téléversement de documents pour le parcours Bailleur
 // Documents requis : Pièce d'identité, Justificatif de propriété, Justificatif de domicile
 
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+
+/// Représente un fichier sélectionné via FilePicker
+class FichierDocument {
+  final String nom;
+  final Uint8List bytes;
+  final String? chemin;
+
+  FichierDocument({
+    required this.nom,
+    required this.bytes,
+    this.chemin,
+  });
+}
 
 /// État de téléversement d'un document
 enum DocumentUploadState {
@@ -12,11 +28,13 @@ enum DocumentUploadState {
 class RegisterBailleurDocsScreen extends StatefulWidget {
   final VoidCallback onFinaliser;
   final VoidCallback onRetour;
+  final void Function(List<FichierDocument?> fichiers) onFichiersChanges;
 
   const RegisterBailleurDocsScreen({
     super.key,
     required this.onFinaliser,
     required this.onRetour,
+    required this.onFichiersChanges,
   });
 
   @override
@@ -33,20 +51,75 @@ class _RegisterBailleurDocsScreenState
   DocumentUploadState _justificatifDomicile =
       DocumentUploadState.nonSelectionne;
 
-  void _simulerUpload(int index) {
-    setState(() {
-      switch (index) {
-        case 0:
-          _pieceIdentite = DocumentUploadState.selectionne;
-          break;
-        case 1:
-          _justificatifPropriete = DocumentUploadState.selectionne;
-          break;
-        case 2:
-          _justificatifDomicile = DocumentUploadState.selectionne;
-          break;
+  // Fichiers sélectionnés (nom + bytes pour compatibilité Web)
+  String? _nomPieceIdentite;
+  String? _nomJustificatifPropriete;
+  String? _nomJustificatifDomicile;
+
+  FichierDocument? _fichierPieceIdentite;
+  FichierDocument? _fichierJustificatifPropriete;
+  FichierDocument? _fichierJustificatifDomicile;
+
+  Future<void> _pickerFichier(int index) async {
+    try {
+      final result = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true, // Important pour obtenir les bytes (compatible Web)
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final bytes = file.bytes;
+        final nom = file.name;
+
+        if (bytes == null) {
+          _afficherErreur("Impossible de lire le fichier sélectionné.");
+          return;
+        }
+
+        setState(() {
+          switch (index) {
+            case 0:
+              _pieceIdentite = DocumentUploadState.selectionne;
+              _nomPieceIdentite = nom;
+              _fichierPieceIdentite = FichierDocument(
+                nom: nom,
+                bytes: bytes,
+                chemin: file.path,
+              );
+              break;
+            case 1:
+              _justificatifPropriete = DocumentUploadState.selectionne;
+              _nomJustificatifPropriete = nom;
+              _fichierJustificatifPropriete = FichierDocument(
+                nom: nom,
+                bytes: bytes,
+                chemin: file.path,
+              );
+              break;
+            case 2:
+              _justificatifDomicile = DocumentUploadState.selectionne;
+              _nomJustificatifDomicile = nom;
+              _fichierJustificatifDomicile = FichierDocument(
+                nom: nom,
+                bytes: bytes,
+                chemin: file.path,
+              );
+              break;
+          }
+        });
+
+        // Notifier le parent des changements
+        widget.onFichiersChanges([
+          _fichierPieceIdentite,
+          _fichierJustificatifPropriete,
+          _fichierJustificatifDomicile,
+        ]);
       }
-    });
+    } catch (e) {
+      _afficherErreur("Erreur lors de la sélection du fichier : $e");
+    }
   }
 
   void _soumettre() {
@@ -166,6 +239,7 @@ class _RegisterBailleurDocsScreenState
                       description:
                           'CNI, Passeport ou Carte de séjour en cours de validité',
                       statut: _pieceIdentite,
+                      nomFichier: _nomPieceIdentite,
                     ),
                     const SizedBox(height: 14),
 
@@ -178,6 +252,7 @@ class _RegisterBailleurDocsScreenState
                       description:
                           'Titre de propriété, ACD ou Contrat de bail',
                       statut: _justificatifPropriete,
+                      nomFichier: _nomJustificatifPropriete,
                     ),
                     const SizedBox(height: 14),
 
@@ -190,6 +265,7 @@ class _RegisterBailleurDocsScreenState
                       description:
                           'Facture CIE ou SODECI à votre nom (moins de 3 mois)',
                       statut: _justificatifDomicile,
+                      nomFichier: _nomJustificatifDomicile,
                     ),
                     const SizedBox(height: 32),
 
@@ -305,6 +381,7 @@ class _RegisterBailleurDocsScreenState
     required String titre,
     required String description,
     required DocumentUploadState statut,
+    String? nomFichier,
   }) {
     final bool estSelectionne = statut == DocumentUploadState.selectionne;
 
@@ -386,11 +463,56 @@ class _RegisterBailleurDocsScreenState
           ),
           const SizedBox(height: 16),
 
+          // Nom du fichier sélectionné (visible après sélection)
+          if (estSelectionne && nomFichier != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF16A34A).withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: const Color(0xFFBBF7D0),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.insert_drive_file_rounded,
+                    size: 18,
+                    color: Color(0xFF16A34A),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      nomFichier,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF15803D),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => _pickerFichier(index),
+                    child: const Icon(
+                      Icons.swap_horiz_rounded,
+                      size: 18,
+                      color: Color(0xFF16A34A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
           // Bouton de téléversement
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _simulerUpload(index),
+              onPressed: () => _pickerFichier(index),
               icon: Icon(
                 estSelectionne
                     ? Icons.check_circle_rounded
@@ -402,7 +524,7 @@ class _RegisterBailleurDocsScreenState
               ),
               label: Text(
                 estSelectionne
-                    ? 'Fichier sélectionné'
+                    ? 'Changer le fichier'
                     : 'Téléverser le document',
                 style: TextStyle(
                   fontSize: 14,
