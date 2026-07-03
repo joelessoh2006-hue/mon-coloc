@@ -70,8 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return;
       }
 
-      final doc =
-          await _firestore.collection('users').doc(user.uid).get();
+      final doc = await _firestore.collection('users').doc(user.uid).get();
 
       if (!mounted) return;
 
@@ -114,9 +113,17 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted || !doc.exists) return;
       final data = doc.data() as Map<String, dynamic>;
       final aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
-      if (aDejaUnLogement != _aDejaUnLogement) {
+      final shouldUpdateUser =
+          _currentUser == null ||
+          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
+          _currentUser!.justificatifUrl != (data['justificatifUrl'] as String?);
+
+      if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser) {
         setState(() {
           _aDejaUnLogement = aDejaUnLogement;
+          if (shouldUpdateUser) {
+            _currentUser = UserModel.fromFirestore(doc);
+          }
         });
       }
     });
@@ -158,11 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     // Indicateur de chargement
     if (_chargement) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Interface selon le rôle
@@ -187,13 +190,22 @@ class _HomeScreenState extends State<HomeScreen> {
       _construirePageDecouvrir(),
       _construirePageMessagerie(),
       // Si l'étudiant a déjà un logement → "Mon logement", sinon → "Logements"
-      _aDejaUnLogement ? _construirePageMonLogement() : _construirePageLogements(),
+      _aDejaUnLogement
+          ? _construirePageMonLogement()
+          : _construirePageLogements(),
       _construirePageMonEquipe(),
       _construirePageMonProfil(),
     ];
 
     return Scaffold(
-      body: pages[_ongletActif],
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (_shouldShowVerificationAlert) _buildVerificationAlert(),
+            Expanded(child: pages[_ongletActif]),
+          ],
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _ongletActif,
         onTap: (index) => setState(() => _ongletActif = index),
@@ -210,9 +222,9 @@ class _HomeScreenState extends State<HomeScreen> {
             label: 'Messagerie',
           ),
           BottomNavigationBarItem(
-            icon: Icon(_aDejaUnLogement
-                ? Icons.home_work_rounded
-                : Icons.home_rounded),
+            icon: Icon(
+              _aDejaUnLogement ? Icons.home_work_rounded : Icons.home_rounded,
+            ),
             label: _aDejaUnLogement ? 'Mon logement' : 'Logements',
           ),
           const BottomNavigationBarItem(
@@ -235,6 +247,44 @@ class _HomeScreenState extends State<HomeScreen> {
       label: Text('${_nonLuCount > 99 ? '99+' : _nonLuCount}'),
       isLabelVisible: _nonLuCount > 0,
       child: const Icon(Icons.chat_rounded),
+    );
+  }
+
+  bool get _shouldShowVerificationAlert {
+    final user = _currentUser;
+    return user != null &&
+        user.role == 'etudiant' &&
+        !user.estVerifie &&
+        (user.justificatifUrl == null || user.justificatifUrl!.isEmpty);
+  }
+
+  Widget _buildVerificationAlert() {
+    return Card(
+      color: Colors.orange.shade50,
+      margin: const EdgeInsets.all(12),
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: Colors.orange.shade400, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            Icon(
+              Icons.warning_amber_rounded,
+              color: Colors.orange.shade700,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                "⚠️ Votre compte n'est pas encore vérifié. Veuillez téléverser votre justificatif pour soumettre votre dossier à l'administrateur.",
+                style: TextStyle(color: Colors.black87, fontSize: 14),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -272,11 +322,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const BailleurVisitsScreen(),
     ];
 
-    final titles = [
-      'Espace Bailleur',
-      'Messagerie',
-      'Mes Visites',
-    ];
+    final titles = ['Espace Bailleur', 'Messagerie', 'Mes Visites'];
 
     return Scaffold(
       appBar: AppBar(
@@ -291,9 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Mon Profil',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const MonProfilScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const MonProfilScreen()),
               );
             },
           ),
@@ -452,9 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
             tooltip: 'Mon Profil',
             onPressed: () {
               Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const MonProfilScreen(),
-                ),
+                MaterialPageRoute(builder: (_) => const MonProfilScreen()),
               );
             },
           ),
@@ -523,11 +565,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 18,
-                color: couleur,
-              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 18, color: couleur),
             ],
           ),
         ),

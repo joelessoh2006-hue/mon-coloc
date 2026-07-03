@@ -49,6 +49,9 @@ class UserModel {
   /// Vérification du compte (false par défaut, passe à true après validation)
   final bool estVerifie;
 
+  /// Indique si le compte est bloqué par l'admin (true = accès interdit)
+  final bool estBloque;
+
   /// URL de la photo de profil (Firebase Storage)
   final String? photoUrl;
 
@@ -122,6 +125,7 @@ class UserModel {
     required this.ecoleUniversite,
     this.role = 'etudiant',
     this.estVerifie = false,
+    this.estBloque = false,
     this.photoUrl,
     this.filiere,
     this.biographie,
@@ -168,6 +172,7 @@ class UserModel {
       'ecoleUniversite': ecoleUniversite,
       'role': role,
       'estVerifie': estVerifie,
+      'estBloque': estBloque,
       'photoUrl': photoUrl,
       'filiere': filiere,
       'biographie': biographie,
@@ -235,6 +240,7 @@ class UserModel {
       ecoleUniversite: data['ecoleUniversite'] as String,
       role: data['role'] as String? ?? 'etudiant',
       estVerifie: data['estVerifie'] as bool? ?? false,
+      estBloque: data['estBloque'] as bool? ?? false,
       photoUrl: data['photoUrl'] as String?,
       filiere: data['filiere'] as String?,
       biographie: data['biographie'] as String?,

@@ -1,0 +1,6 @@
+{
+  "primaryUrl": "https://openrouter.ai/api/v1",
+  "apiKey": "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",
+  "model": "google/gemma-2-9b-it:free",
+  "dangerouslyAllowOtherModels": true
+}

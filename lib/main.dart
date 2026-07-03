@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -36,7 +37,8 @@ class MonColocApp extends StatelessWidget {
 }
 
 /// Widget qui écoute l'état d'authentification Firebase
-/// et affiche LoginScreen ou HomePage selon que l'utilisateur est connecté
+/// et affiche LoginScreen ou HomePage selon que l'utilisateur est connecté.
+/// Vérifie également si le compte n'est pas bloqué (estBloque == true).
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -48,6 +50,8 @@ class _AuthGateState extends State<AuthGate> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   bool _estConnecte = false;
   bool _initialisationTerminee = false;
+  bool _estBloque = false;
+  bool _verificationBloqueEnCours = false;
 
   @override
   void initState() {
@@ -63,14 +67,76 @@ class _AuthGateState extends State<AuthGate> {
       _initialisationTerminee = true;
     });
 
+    // Si connecté, vérifier le statut de blocage
+    if (user != null) {
+      await _verifierStatutBlocage(user.uid);
+    }
+
     // Écouter les changements d'état d'authentification
-    _auth.authStateChanges().listen((User? user) {
+    _auth.authStateChanges().listen((User? user) async {
       if (mounted) {
         setState(() {
           _estConnecte = user != null;
         });
       }
+      // Vérifier le blocage à chaque (re)connexion
+      if (user != null && mounted) {
+        await _verifierStatutBlocage(user.uid);
+      } else if (mounted) {
+        setState(() {
+          _estBloque = false;
+        });
+      }
     });
+  }
+
+  /// Vérifie dans Firestore si l'utilisateur est bloqué (estBloque == true).
+  Future<void> _verifierStatutBlocage(String uid) async {
+    if (_verificationBloqueEnCours) return;
+    _verificationBloqueEnCours = true;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        final bloque = data['estBloque'] as bool? ?? false;
+        if (mounted) {
+          setState(() {
+            _estBloque = bloque;
+          });
+          // Si l'utilisateur est bloqué, le déconnecter après un court délai
+          if (bloque) {
+            await Future.delayed(const Duration(seconds: 1));
+            await _auth.signOut();
+            if (mounted) {
+              setState(() {
+                _estConnecte = false;
+                _estBloque = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    '⚠️ Votre compte a été suspendu. Contactez l\'administrateur.',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  backgroundColor: Colors.red,
+                  behavior: SnackBarBehavior.floating,
+                  duration: Duration(seconds: 5),
+                ),
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      // En cas d'erreur de lecture, on laisse passer
+      debugPrint('Erreur vérification blocage: $e');
+    } finally {
+      _verificationBloqueEnCours = false;
+    }
   }
 
   @override
@@ -79,6 +145,47 @@ class _AuthGateState extends State<AuthGate> {
       return const Scaffold(
         body: Center(
           child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_estBloque) {
+      // Écran de compte bloqué (affiché pendant la déconnexion)
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.gpp_bad_rounded,
+                  size: 80,
+                  color: Colors.red.shade400,
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Compte suspendu',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Votre compte a été suspendu par l\'administration. '
+                  'Veuillez contacter le support pour plus d\'informations.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const CircularProgressIndicator(),
+              ],
+            ),
+          ),
         ),
       );
     }

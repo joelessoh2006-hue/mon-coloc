@@ -20,7 +20,7 @@
       "collectionGroup": "logements",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "statut", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "datePublication", "order": "DESCENDING" }
       ]
     },
@@ -38,6 +38,13 @@
       "fields": [
         { "fieldPath": "role", "order": "ASCENDING" },
         { "fieldPath": "estVerifie", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "dateCreation", "order": "DESCENDING" }
       ]
     }
   ],

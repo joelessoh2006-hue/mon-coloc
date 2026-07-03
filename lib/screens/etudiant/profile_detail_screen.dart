@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -56,8 +58,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         filiere: widget.userData['filiere'] as String?,
         biographie: widget.userData['biographie'] as String?,
         justificatifUrl: widget.userData['justificatifUrl'] as String?,
-        budgetMaxFCFA: (widget.userData['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
-        quartierCible: UserModel.safeStringList(widget.userData['quartierCible']),
+        budgetMaxFCFA:
+            (widget.userData['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
+        quartierCible: UserModel.safeStringList(
+          widget.userData['quartierCible'],
+        ),
         statutLogement: StatutLogement.values.firstWhere(
           (e) => e.name == widget.userData['statutLogement'],
           orElse: () => StatutLogement.chercheUnLogement,
@@ -87,7 +92,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           orElse: () => StatutAnimaux.non,
         ),
         typeAnimaux: widget.userData['typeAnimaux'] as String?,
-        bruitsFortsVolume: widget.userData['bruitsFortsVolume'] as bool? ?? false,
+        bruitsFortsVolume:
+            widget.userData['bruitsFortsVolume'] as bool? ?? false,
         appelsFrequents: widget.userData['appelsFrequents'] as bool? ?? false,
         soireesAmis: widget.userData['soireesAmis'] as bool? ?? false,
         besoinSilence: widget.userData['besoinSilence'] as bool? ?? false,
@@ -98,12 +104,18 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         niveauSociabilite: widget.userData['niveauSociabilite'] as int?,
         aDejaUnLogement: widget.userData['aDejaUnLogement'] as bool? ?? false,
         logementQuartier: widget.userData['logementQuartier'] as String?,
-        logementLoyerTotal: (widget.userData['logementLoyerTotal'] as num?)?.toDouble(),
-        logementPartColoc: (widget.userData['logementPartColoc'] as num?)?.toDouble(),
+        logementLoyerTotal: (widget.userData['logementLoyerTotal'] as num?)
+            ?.toDouble(),
+        logementPartColoc: (widget.userData['logementPartColoc'] as num?)
+            ?.toDouble(),
         logementDescription: widget.userData['logementDescription'] as String?,
-        logementPhotos: UserModel.safeStringList(widget.userData['logementPhotos']),
-        habitudesQuotidiennes: widget.userData['habitudesQuotidiennes'] as String?,
-        genreColocataireRecherche: widget.userData['genreColocataireRecherche'] as String?,
+        logementPhotos: UserModel.safeStringList(
+          widget.userData['logementPhotos'],
+        ),
+        habitudesQuotidiennes:
+            widget.userData['habitudesQuotidiennes'] as String?,
+        genreColocataireRecherche:
+            widget.userData['genreColocataireRecherche'] as String?,
         dateInscription: widget.userData['dateInscription'] != null
             ? (widget.userData['dateInscription'] as Timestamp).toDate()
             : DateTime.now(),
@@ -125,17 +137,14 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
     if (uid.isEmpty) return;
 
     try {
-      final conversationId =
-          await _chatService.obtenirOuCreerConversation(uid);
+      final conversationId = await _chatService.obtenirOuCreerConversation(uid);
 
       if (!mounted) return;
 
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatScreen(
-            conversationId: conversationId,
-            destinataireId: uid,
-          ),
+          builder: (_) =>
+              ChatScreen(conversationId: conversationId, destinataireId: uid),
         ),
       );
     } catch (e) {
@@ -208,7 +217,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 icon: Icons.person_outline_rounded,
                 title: 'À propos de moi',
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: Text(
                     _user.biographie!,
                     style: const TextStyle(
@@ -276,7 +288,26 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 radius: 52,
                 backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 backgroundImage:
-                    photoUrl != null ? NetworkImage(photoUrl) : null,
+                    (() {
+                          if (photoUrl == null) return null;
+                          try {
+                            if (photoUrl.startsWith('data:image')) {
+                              final base64Part = photoUrl.split(',').last;
+                              return MemoryImage(base64Decode(base64Part));
+                            }
+                            // Try decode in case it's a raw base64 string
+                            try {
+                              final bytes = base64Decode(photoUrl);
+                              return MemoryImage(bytes);
+                            } catch (_) {
+                              // Not base64 -> assume URL
+                              return NetworkImage(photoUrl);
+                            }
+                          } catch (_) {
+                            return null;
+                          }
+                        })()
+                        as ImageProvider<Object>?,
                 child: photoUrl == null
                     ? Text(
                         prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
@@ -342,8 +373,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.school_rounded,
-                      size: 18, color: theme.colorScheme.primary),
+                  Icon(
+                    Icons.school_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     ecole,
@@ -385,8 +419,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
               child: const Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.verified_rounded,
-                      size: 16, color: Color(0xFF2E7D32)),
+                  Icon(
+                    Icons.verified_rounded,
+                    size: 16,
+                    color: Color(0xFF2E7D32),
+                  ),
                   SizedBox(width: 6),
                   Text(
                     'Profil Vérifié',
@@ -430,15 +467,44 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     },
                     itemCount: photos.length,
                     itemBuilder: (context, index) {
-                      return Container(
-                        margin: const EdgeInsets.only(right: 0),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          image: DecorationImage(
-                            image: NetworkImage(photos[index]),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                      final raw = photos[index];
+                      Uint8List? bytes;
+                      try {
+                        if (raw.startsWith('data:image')) {
+                          final base64Part = raw.split(',').last;
+                          bytes = base64Decode(base64Part);
+                        } else {
+                          bytes = base64Decode(raw);
+                        }
+                      } catch (_) {
+                        bytes = null;
+                      }
+
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: bytes != null
+                            ? Image.memory(
+                                bytes,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                              )
+                            : Image.network(
+                                raw,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                height: double.infinity,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.grey.shade200,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image_rounded,
+                                      size: 48,
+                                      color: Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ),
                       );
                     },
                   ),
@@ -483,15 +549,15 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
               ),
               child: Column(
                 children: [
-                  Icon(Icons.photo_library_outlined,
-                      size: 48, color: Colors.grey[300]),
+                  Icon(
+                    Icons.photo_library_outlined,
+                    size: 48,
+                    color: Colors.grey[300],
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'Aucune photo du logement disponible',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   ),
                 ],
               ),
@@ -669,9 +735,13 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         children: [
           // Fumeur / Non-fumeur
           _buildHabitChip(
-            icon: _user.fumeur ? Icons.smoking_rooms_rounded : Icons.smoke_free_rounded,
+            icon: _user.fumeur
+                ? Icons.smoking_rooms_rounded
+                : Icons.smoke_free_rounded,
             label: _user.fumeur ? 'Fumeur' : 'Non-fumeur',
-            color: _user.fumeur ? const Color(0xFFE65100) : const Color(0xFF2E7D32),
+            color: _user.fumeur
+                ? const Color(0xFFE65100)
+                : const Color(0xFF2E7D32),
           ),
 
           // Rythme de vie
@@ -933,10 +1003,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             icon: const Icon(Icons.chat_rounded, size: 20),
             label: const Text(
               'Envoyer un message',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             style: FilledButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,

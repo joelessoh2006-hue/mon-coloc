@@ -17,12 +17,11 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Récupère en temps réel les logements du bailleur connecté
+  /// Récupère en temps réel toutes les annonces du bailleur connecté.
   Stream<QuerySnapshot> _streamLogements() {
-    final uid = _auth.currentUser!.uid;
     return _firestore
         .collection('logements')
-        .where('idBailleur', isEqualTo: uid)
+        .where('idBailleur', isEqualTo: _auth.currentUser?.uid)
         .snapshots();
   }
 
@@ -44,9 +43,7 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
         builder: (context, snapshot) {
           // --- État de chargement ---
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
 
           // --- Erreur ---
@@ -59,8 +56,11 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline,
-                        size: 64, color: theme.colorScheme.error),
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: theme.colorScheme.error,
+                    ),
                     const SizedBox(height: 16),
                     Text(
                       'Une erreur est survenue',
@@ -95,7 +95,9 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
                     Icon(
                       Icons.home_work_rounded,
                       size: 80,
-                      color: theme.colorScheme.onSurfaceVariant.withOpacity(0.4),
+                      color: theme.colorScheme.onSurfaceVariant.withOpacity(
+                        0.4,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     Text(
@@ -156,13 +158,16 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
 
   /// Construit une carte élégante pour un logement
   Widget _carteLogement(
-      ThemeData theme, Map<String, dynamic> data, String docId) {
+    ThemeData theme,
+    Map<String, dynamic> data,
+    String docId,
+  ) {
     // --- Extraction des données ---
     final commune = data['commune'] as String? ?? 'Non renseignée';
     final quartier = data['quartier'] as String? ?? 'Non renseigné';
     final loyer = data['loyer'] as int? ?? 0;
     final nombrePieces = data['nombrePieces'] as int? ?? 0;
-    final statut = data['statut'] as String? ?? 'en_attente';
+    final statut = data['status'] as String? ?? 'en_attente';
 
     return Card(
       elevation: 0,
@@ -246,15 +251,17 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
                     Icon(
                       Icons.calendar_today_rounded,
                       size: 16,
-                      color: theme.colorScheme.onSurfaceVariant
-                          .withOpacity(0.6),
+                      color: theme.colorScheme.onSurfaceVariant.withOpacity(
+                        0.6,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       _formaterDate(data['datePublication'] as Timestamp),
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant
-                            .withOpacity(0.6),
+                        color: theme.colorScheme.onSurfaceVariant.withOpacity(
+                          0.6,
+                        ),
                       ),
                     ),
                   ],
@@ -274,9 +281,7 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFFFF3E0),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFFFFB74D).withOpacity(0.5),
-          ),
+          border: Border.all(color: const Color(0xFFFFB74D).withOpacity(0.5)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -306,9 +311,7 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
         decoration: BoxDecoration(
           color: const Color(0xFFE8F5E9),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: const Color(0xFF66BB6A).withOpacity(0.5),
-          ),
+          border: Border.all(color: const Color(0xFF66BB6A).withOpacity(0.5)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -353,12 +356,20 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
   /// Formate un Timestamp Firestore en date lisible
   String _formaterDate(Timestamp timestamp) {
     final date = timestamp.toDate();
-    final jours = [
-      'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'
-    ];
+    final jours = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
     final mois = [
-      'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'
+      'janvier',
+      'février',
+      'mars',
+      'avril',
+      'mai',
+      'juin',
+      'juillet',
+      'août',
+      'septembre',
+      'octobre',
+      'novembre',
+      'décembre',
     ];
     return 'Publié le ${date.day} ${mois[date.month - 1]} ${date.year}';
   }

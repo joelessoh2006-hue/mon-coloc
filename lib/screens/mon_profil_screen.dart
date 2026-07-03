@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -151,21 +150,10 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     });
 
     try {
-      String url;
-      // Vérifier si on est sur le web (pas de File.path)
-      if (image.path.startsWith('/virtual/') || image.path.isEmpty) {
-        final bytes = await image.readAsBytes();
-        url = await _userService.televerserPhotoProfilBytes(
-          uid: uid,
-          bytes: Uint8List.fromList(bytes),
-        );
-      } else {
-        url = await _userService.televerserPhotoProfil(
-          uid: uid,
-          cheminFichier: image.path,
-        );
-      }
-
+      final url = await _userService.televerserPhotoProfil(
+        uid: uid,
+        imageFile: image,
+      );
       // Mettre à jour Firestore
       await _userService.mettreAJourPartiel(
         uid: uid,
@@ -235,20 +223,10 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     });
 
     try {
-      String url;
-      if (doc.path.startsWith('/virtual/') || doc.path.isEmpty) {
-        final bytes = await doc.readAsBytes();
-        url = await _userService.televerserJustificatifBytes(
-          uid: uid,
-          bytes: Uint8List.fromList(bytes),
-        );
-      } else {
-        url = await _userService.televerserJustificatif(
-          uid: uid,
-          cheminFichier: doc.path,
-        );
-      }
-
+      final url = await _userService.televerserJustificatif(
+        uid: uid,
+        docFile: doc,
+      );
       // Mettre à jour Firestore
       await _userService.mettreAJourPartiel(
         uid: uid,

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -47,8 +48,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
 
   /// Construit la requête Firestore en fonction des filtres sélectionnés.
   Stream<QuerySnapshot> _streamLogements() {
-    Query query =
-        FirebaseFirestore.instance.collection('logements');
+    Query query = FirebaseFirestore.instance.collection('logements');
 
     // Filtrer par commune si une commune est sélectionnée
     if (_communeChoisie != null) {
@@ -103,8 +103,11 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.error_outline,
-                                size: 64, color: Colors.red.shade300),
+                            Icon(
+                              Icons.error_outline,
+                              size: 64,
+                              color: Colors.red.shade300,
+                            ),
                             const SizedBox(height: 16),
                             Text(
                               'Erreur de chargement',
@@ -127,9 +130,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                   }
 
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(),
-                    );
+                    return const Center(child: CircularProgressIndicator());
                   }
 
                   final docs = snapshot.data?.docs ?? [];
@@ -142,8 +143,11 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.home_work_rounded,
-                                size: 80, color: Colors.grey.shade300),
+                            Icon(
+                              Icons.home_work_rounded,
+                              size: 80,
+                              color: Colors.grey.shade300,
+                            ),
                             const SizedBox(height: 24),
                             Text(
                               'Aucun logement trouvé',
@@ -296,7 +300,9 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
 
     // Type de logement : on déduit "Appartement" ou "Studio" selon le nb de pièces
     final typeLogement = nombrePieces <= 1 ? 'Studio' : 'Appartement';
-    final piecesLabel = nombrePieces <= 1 ? '$nombrePieces pièce' : '$nombrePieces pièces';
+    final piecesLabel = nombrePieces <= 1
+        ? '$nombrePieces pièce'
+        : '$nombrePieces pièces';
 
     // Formatage du loyer
     final loyerFormate = _formaterMontant(loyer);
@@ -307,9 +313,17 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
         : 'Caution : $cautionMois mois';
 
     // Localisation
-    final localisation = quartier.isNotEmpty
-        ? '$commune, $quartier'
-        : commune;
+    final localisation = quartier.isNotEmpty ? '$commune, $quartier' : commune;
+    final imageSource = (data['logementPhotos'] is List)
+        ? (data['logementPhotos'] as List)
+              .firstWhere(
+                (value) => value is String && value.trim().isNotEmpty,
+                orElse: () => '',
+              )
+              .toString()
+        : (data['logementPhotos'] is String
+              ? data['logementPhotos'] as String
+              : null);
 
     return Card(
       margin: const EdgeInsets.only(top: 12),
@@ -339,22 +353,33 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Icône
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                  // Photo du logement si disponible
+                  if (imageSource != null && imageSource.toString().isNotEmpty)
+                    ClipRRect(
                       borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 72,
+                        height: 72,
+                        child: _buildPhotoLogement(imageSource.toString()),
+                      ),
+                    )
+                  else
+                    // Icône par défaut
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        nombrePieces <= 1
+                            ? Icons.home_rounded
+                            : Icons.apartment_rounded,
+                        size: 32,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
-                    child: Icon(
-                      nombrePieces <= 1
-                          ? Icons.home_rounded
-                          : Icons.apartment_rounded,
-                      size: 24,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
                   const SizedBox(width: 12),
 
                   // Texte principal
@@ -423,10 +448,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
               const SizedBox(height: 12),
 
               // Ligne séparatrice subtile
-              Divider(
-                height: 1,
-                color: Colors.grey.withValues(alpha: 0.15),
-              ),
+              Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
 
               const SizedBox(height: 12),
 
@@ -486,5 +508,48 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
       count++;
     }
     return buffer.toString().split('').reversed.join('');
+  }
+
+  /// Affiche une photo de logement décodée en Base64 (comme l'admin).
+  /// Affiche un placeholder en cas d'erreur de décodage.
+  Widget _buildPhotoLogement(String photoBase64) {
+    try {
+      // Normaliser le Base64 (retirer le data URI prefix si présent)
+      String normalized = photoBase64.trim();
+      if (normalized.startsWith('data:image')) {
+        final separatorIndex = normalized.indexOf(',');
+        if (separatorIndex != -1) {
+          normalized = normalized.substring(separatorIndex + 1).trim();
+        }
+      }
+
+      final bytes = base64Decode(normalized);
+      return Image.memory(
+        bytes,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey.shade200,
+            child: Icon(
+              Icons.image_not_supported_rounded,
+              color: Colors.grey.shade600,
+              size: 32,
+            ),
+          );
+        },
+      );
+    } catch (e) {
+      // En cas d'erreur de décodage, afficher un placeholder
+      return Container(
+        color: Colors.grey.shade200,
+        child: Icon(
+          Icons.broken_image_rounded,
+          color: Colors.grey.shade600,
+          size: 32,
+        ),
+      );
+    }
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -104,7 +105,9 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
     });
 
     try {
-      final currentPhotos = List<String>.from(_utilisateur?.logementPhotos ?? []);
+      final currentPhotos = List<String>.from(
+        _utilisateur?.logementPhotos ?? [],
+      );
       final index = currentPhotos.length;
 
       String url;
@@ -113,13 +116,11 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
         url = await _userService.televerserPhotoLogementBytes(
           uid: uid,
           bytes: Uint8List.fromList(bytes),
-          index: index,
         );
       } else {
         url = await _userService.televerserPhotoLogement(
           uid: uid,
-          cheminFichier: image.path,
-          index: index,
+          imageFile: image,
         );
       }
 
@@ -251,9 +252,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
     final user = _utilisateur;
     if (user == null) {
-      return const Center(
-        child: Text('Impossible de charger les données.'),
-      );
+      return const Center(child: Text('Impossible de charger les données.'));
     }
 
     final hasPhotos = user.logementPhotos.isNotEmpty;
@@ -278,10 +277,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
               const SizedBox(height: 8),
               Text(
                 'Gérez votre annonce et ses photos',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
 
@@ -318,7 +314,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     ],
                   ),
                 ),
-              if (!hasPhotos && !_televersementEnCours) const SizedBox(height: 24),
+              if (!hasPhotos && !_televersementEnCours)
+                const SizedBox(height: 24),
 
               // Overlay de téléversement
               if (_televersementEnCours)
@@ -365,15 +362,56 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                           itemBuilder: (context, index) {
                             return Stack(
                               children: [
-                                Container(
-                                  width: 180,
-                                  margin: const EdgeInsets.only(right: 12),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    image: DecorationImage(
-                                      image: NetworkImage(
-                                          user.logementPhotos[index]),
-                                      fit: BoxFit.cover,
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    width: 180,
+                                    margin: const EdgeInsets.only(right: 12),
+                                    color: Colors.grey.shade200,
+                                    child: Builder(
+                                      builder: (context) {
+                                        final raw = user.logementPhotos[index];
+                                        Uint8List? bytes;
+                                        try {
+                                          if (raw.startsWith('data:image')) {
+                                            final base64Part = raw
+                                                .split(',')
+                                                .last;
+                                            bytes = base64Decode(base64Part);
+                                          } else {
+                                            bytes = base64Decode(raw);
+                                          }
+                                        } catch (_) {
+                                          bytes = null;
+                                        }
+
+                                        if (bytes != null) {
+                                          return Image.memory(
+                                            bytes,
+                                            fit: BoxFit.cover,
+                                            width: 180,
+                                            height: double.infinity,
+                                          );
+                                        }
+
+                                        return Image.network(
+                                          raw,
+                                          fit: BoxFit.cover,
+                                          width: 180,
+                                          height: double.infinity,
+                                          errorBuilder: (_, __, ___) =>
+                                              Container(
+                                                color: Colors.grey.shade200,
+                                                child: const Center(
+                                                  child: Icon(
+                                                    Icons.broken_image_rounded,
+                                                    size: 36,
+                                                    color: Colors.grey,
+                                                  ),
+                                                ),
+                                              ),
+                                        );
+                                      },
                                     ),
                                   ),
                                 ),
@@ -509,18 +547,22 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                                           width: 18,
                                           height: 18,
                                           child: CircularProgressIndicator(
-                                              strokeWidth: 2),
+                                            strokeWidth: 2,
+                                          ),
                                         )
-                                      : const Icon(Icons.save_rounded,
-                                          size: 18),
+                                      : const Icon(
+                                          Icons.save_rounded,
+                                          size: 18,
+                                        ),
                                   label: Text(
                                     _sauvegardeEnCours
                                         ? 'Sauvegarde…'
                                         : 'Enregistrer',
                                   ),
                                   style: FilledButton.styleFrom(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 14),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -528,13 +570,17 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                                 )
                               : OutlinedButton.icon(
                                   onPressed: () => setState(
-                                      () => _modificationActive = true),
+                                    () => _modificationActive = true,
+                                  ),
                                   icon: const Icon(
-                                      Icons.edit_rounded, size: 18),
+                                    Icons.edit_rounded,
+                                    size: 18,
+                                  ),
                                   label: const Text('Modifier'),
                                   style: OutlinedButton.styleFrom(
-                                    padding:
-                                        const EdgeInsets.symmetric(vertical: 14),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 14,
+                                    ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(12),
                                     ),
@@ -556,8 +602,9 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: Colors.red,
                                 side: const BorderSide(color: Colors.red),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),

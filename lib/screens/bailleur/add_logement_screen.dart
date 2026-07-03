@@ -1,6 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:image/image.dart' as img;
 
 /// Écran de formulaire permettant à un bailleur d'ajouter un nouveau logement.
 class AddLogementScreen extends StatefulWidget {
@@ -40,8 +44,11 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
     'Anyama',
   ];
 
-  // Simulation d'ajout de photos
-  bool _photosAjoutees = false;
+  // Image picker pour l'ajout réel de photos
+  final ImagePicker _picker = ImagePicker();
+
+  // Fichiers sélectionnés localement avant publication
+  List<XFile> _selectedPhotos = [];
 
   // État de chargement pour la publication
   bool _enPublication = false;
@@ -56,28 +63,110 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
     super.dispose();
   }
 
-  /// Simule l'ajout de photos
-  void _simulerAjoutPhotos() {
-    setState(() {
-      _photosAjoutees = !_photosAjoutees;
-    });
-
-    if (_photosAjoutees) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.white, size: 20),
-              SizedBox(width: 12),
-              Text('Photos ajoutées avec succès'),
-            ],
-          ),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          duration: Duration(seconds: 2),
-        ),
+  /// Ajoute des photos en ouvrant la galerie et les conserve localement
+  /// tant que l'utilisateur n'a pas publié l'annonce.
+  Future<void> _ajouterPhotos() async {
+    try {
+      final images = await _picker.pickMultiImage(
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
       );
+
+      if (images == null || images.isEmpty) return;
+
+      if (mounted) {
+        setState(() {
+          _selectedPhotos = images;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text(
+                  'Photos ajoutées. Elles seront téléversées à la publication.',
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Erreur lors de la sélection : ${e.toString()}'),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
+  }
+
+  /// Instead of uploading to Firebase Storage, compress images and return
+  /// a list of Base64-encoded JPEG strings to store directly in Firestore.
+  Future<List<String>> _televerserPhotos(String uid) async {
+    final List<String> b64List = [];
+
+    for (var i = 0; i < _selectedPhotos.length; i++) {
+      final XFile file = _selectedPhotos[i];
+      print("DEBUG: Compression et encodage Base64 de l'image $i");
+      final bytes = await file.readAsBytes();
+
+      try {
+        final image = img.decodeImage(bytes);
+
+        if (image != null) {
+          // Réduire la résolution si nécessaire (max 1024) puis compresser fortement
+          const int maxSide = 1024;
+          img.Image resized = image;
+          if (image.width > maxSide || image.height > maxSide) {
+            if (image.width >= image.height) {
+              resized = img.copyResize(image, width: maxSide);
+            } else {
+              resized = img.copyResize(image, height: maxSide);
+            }
+          }
+
+          // Qualité faible pour garder la chaîne Base64 légère
+          final jpg = img.encodeJpg(resized, quality: 35);
+          final b64 = base64Encode(jpg);
+          b64List.add(b64);
+          print(
+            "DEBUG: Image $i compressée (${jpg.length} bytes) et encodée en Base64",
+          );
+        } else {
+          // Si decode échoue, utilser l'original (fallback)
+          final b64 = base64Encode(bytes);
+          b64List.add(b64);
+          print(
+            "DEBUG: Image $i non décodable, utilisation du flux original en Base64",
+          );
+        }
+      } catch (e) {
+        // En cas d'erreur, sauvegarder l'original en Base64 et continuer
+        final b64 = base64Encode(bytes);
+        b64List.add(b64);
+        print("DEBUG: Erreur lors du traitement image $i : ${e.toString()}");
+      }
+    }
+
+    return b64List;
   }
 
   /// Valide et publie le logement dans Firestore
@@ -85,7 +174,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     // Vérifier que des photos ont été ajoutées
-    if (!_photosAjoutees) {
+    if (_selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -103,6 +192,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
     }
 
     setState(() => _enPublication = true);
+    print("DEBUG: Début de la publication");
 
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -129,6 +219,12 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
         throw Exception('La caution doit être supérieure à 0');
       }
 
+      print(
+        "DEBUG: Appel de _televerserPhotos avec ${_selectedPhotos.length} images",
+      );
+      final logementPhotoUrls = await _televerserPhotos(user.uid);
+
+      print("DEBUG: Tentative d'écriture dans Firestore...");
       // Création du document dans la collection 'logements'
       await FirebaseFirestore.instance.collection('logements').add({
         'idBailleur': user.uid,
@@ -138,10 +234,11 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
         'nombrePieces': pieces,
         'cautionMois': cautionMois,
         'description': _descriptionController.text.trim(),
-        'photosAjoutees': _photosAjoutees,
+        'logementPhotos': logementPhotoUrls,
         'datePublication': FieldValue.serverTimestamp(),
-        'statut': 'en_attente',
+        'status': 'en_attente',
       });
+      print("DEBUG: Écriture Firestore réussie !");
 
       if (!mounted) return;
 
@@ -168,9 +265,27 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
 
       // Retour à l'écran d'accueil du bailleur
       Navigator.of(context).pop();
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+
+      setState(() => _enPublication = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 20),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Firebase erreur : ${e.message ?? e.code}')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
 
+      setState(() => _enPublication = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -379,7 +494,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
                 ),
                 const SizedBox(height: 8),
                 InkWell(
-                  onTap: _simulerAjoutPhotos,
+                  onTap: _ajouterPhotos,
                   borderRadius: BorderRadius.circular(16),
                   child: AnimatedContainer(
                     duration: const Duration(milliseconds: 300),
@@ -388,12 +503,12 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
                       horizontal: 20,
                     ),
                     decoration: BoxDecoration(
-                      color: _photosAjoutees
+                      color: _selectedPhotos.isNotEmpty
                           ? const Color(0xFF1E6B4E).withOpacity(0.08)
                           : Colors.grey.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(
-                        color: _photosAjoutees
+                        color: _selectedPhotos.isNotEmpty
                             ? const Color(0xFF1E6B4E)
                             : Colors.grey.withOpacity(0.3),
                         width: 1.5,
@@ -404,23 +519,23 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          _photosAjoutees
+                          _selectedPhotos.isNotEmpty
                               ? Icons.check_circle
                               : Icons.add_a_photo,
                           size: 28,
-                          color: _photosAjoutees
+                          color: _selectedPhotos.isNotEmpty
                               ? const Color(0xFF1E6B4E)
                               : Colors.grey,
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          _photosAjoutees
+                          _selectedPhotos.isNotEmpty
                               ? 'Photos ajoutées ✓'
                               : 'Ajouter des photos',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: _photosAjoutees
+                            color: _selectedPhotos.isNotEmpty
                                 ? const Color(0xFF1E6B4E)
                                 : Colors.grey,
                           ),
@@ -429,6 +544,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
                     ),
                   ),
                 ),
+                if (_selectedPhotos.isNotEmpty) _buildPhotoPreview(),
                 const SizedBox(height: 32),
 
                 // ---------- Bouton de publication ----------
@@ -496,6 +612,98 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
     );
   }
 
+  /// Widget d'aperçu des photos sélectionnées
+  Widget _buildPhotoPreview() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 20),
+        Text(
+          'Aperçu des photos',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: List.generate(
+            _selectedPhotos.length,
+            (index) => _buildPhotoChip(index),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPhotoChip(int index) {
+    final file = _selectedPhotos[index];
+
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: FutureBuilder<Uint8List>(
+            future: file.readAsBytes(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Container(
+                  width: 96,
+                  height: 96,
+                  color: Colors.grey.shade200,
+                  child: const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+
+              if (!snapshot.hasData) {
+                return Container(
+                  width: 96,
+                  height: 96,
+                  color: Colors.grey.shade200,
+                  child: const Icon(Icons.broken_image, color: Colors.grey),
+                );
+              }
+
+              return Image.memory(
+                snapshot.data!,
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
+              );
+            },
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                setState(() {
+                  _selectedPhotos.removeAt(index);
+                });
+              },
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                padding: const EdgeInsets.all(4),
+                child: const Icon(Icons.close, size: 16, color: Colors.white),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   /// Décoration réutilisable pour les champs de saisie
   InputDecoration _inputDecoration({
     required String hint,
@@ -514,10 +722,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
       fillColor: Colors.grey.withOpacity(0.08),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(
-          color: const Color(0xFF1E6B4E),
-          width: 1.5,
-        ),
+        borderSide: BorderSide(color: const Color(0xFF1E6B4E), width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),

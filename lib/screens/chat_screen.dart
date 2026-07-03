@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/services/chat_service.dart';
+import 'package:mon_coloc/services/user_service.dart';
 
 /// Écran de chat en temps réel entre deux utilisateurs.
 ///
@@ -29,6 +30,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final ChatService _chatService = ChatService();
+  final UserService _userService = UserService();
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -123,8 +125,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (widget.conversationId != null) {
         conversationId = widget.conversationId!;
       } else {
-        conversationId =
-            await _chatService.obtenirOuCreerConversation(widget.destinataireId);
+        conversationId = await _chatService.obtenirOuCreerConversation(
+          widget.destinataireId,
+        );
       }
 
       if (mounted) {
@@ -152,33 +155,36 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Écoute en temps réel le document de la conversation pour demandeStatut.
   void _ecouterConversation(String conversationId) {
     _conversationSubscription?.cancel();
-    _conversationSubscription =
-        _chatService.ecouterConversation(conversationId).listen((doc) {
-      if (!doc.exists || !mounted) return;
-      final data = doc.data() as Map<String, dynamic>;
-      final statut = data['demandeStatut'] as String?;
-      final proposePar = data['proposePar'] as String?;
+    _conversationSubscription = _chatService
+        .ecouterConversation(conversationId)
+        .listen((doc) {
+          if (!doc.exists || !mounted) return;
+          final data = doc.data() as Map<String, dynamic>;
+          final statut = data['demandeStatut'] as String?;
+          final proposePar = data['proposePar'] as String?;
 
-      setState(() {
-        _demandeStatut = statut;
-        _proposePar = proposePar;
-      });
+          setState(() {
+            _demandeStatut = statut;
+            _proposePar = proposePar;
+          });
 
-      // Si on a un proposePar et qu'il est différent du current user,
-      // charger son prénom
-      if (proposePar != null &&
-          proposePar != _auth.currentUser?.uid &&
-          _proposeParPrenom == null) {
-        _chargerPrenomProposePar(proposePar);
-      }
-    });
+          // Si on a un proposePar et qu'il est différent du current user,
+          // charger son prénom
+          if (proposePar != null &&
+              proposePar != _auth.currentUser?.uid &&
+              _proposeParPrenom == null) {
+            _chargerPrenomProposePar(proposePar);
+          }
+        });
   }
 
   /// Charge le prénom de l'utilisateur qui a proposé l'équipe.
   Future<void> _chargerPrenomProposePar(String uid) async {
     try {
-      final doc =
-          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
       if (doc.exists && mounted) {
         setState(() {
           _proposeParPrenom = doc.data()?['prenom'] as String?;
@@ -313,8 +319,7 @@ class _ChatScreenState extends State<ChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-              backgroundImage:
-                  photoUrl != null ? NetworkImage(photoUrl) : null,
+              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
               child: photoUrl == null
                   ? Text(
                       prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
@@ -361,6 +366,27 @@ class _ChatScreenState extends State<ChatScreen> {
               color: Color(0xFF2E7D32),
               size: 28,
             ),
+          // Menu déroulant pour signaler l'utilisateur
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'report') {
+                _ouvrirDialogSignalement();
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'report',
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.flag_rounded, size: 20),
+                    SizedBox(width: 8),
+                    Text('Signaler cet utilisateur'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: _construireCorps(theme),
@@ -392,8 +418,11 @@ class _ChatScreenState extends State<ChatScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.error_outline_rounded,
-                  size: 64, color: Colors.red.shade300),
+              Icon(
+                Icons.error_outline_rounded,
+                size: 64,
+                color: Colors.red.shade300,
+              ),
               const SizedBox(height: 16),
               Text(
                 _erreur!,
@@ -433,9 +462,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _buildColocationBanner(),
 
         // Zone des messages
-        Expanded(
-          child: _construireListeMessages(theme),
-        ),
+        Expanded(child: _construireListeMessages(theme)),
 
         // Zone de saisie
         _construireZoneSaisie(theme),
@@ -487,8 +514,11 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             Row(
               children: [
-                const Icon(Icons.handshake_rounded,
-                    size: 24, color: Color(0xFFE65100)),
+                const Icon(
+                  Icons.handshake_rounded,
+                  size: 24,
+                  color: Color(0xFFE65100),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -558,10 +588,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         child: Row(
           children: [
-            const Text(
-              '🤝',
-              style: TextStyle(fontSize: 22),
-            ),
+            const Text('🤝', style: TextStyle(fontSize: 22)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -592,10 +619,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         child: Row(
           children: [
-            const Text(
-              '❌',
-              style: TextStyle(fontSize: 22),
-            ),
+            const Text('❌', style: TextStyle(fontSize: 22)),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -627,10 +651,7 @@ class _ChatScreenState extends State<ChatScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFFE3F2FD),
-            const Color(0xFFF3E5F5),
-          ],
+          colors: [const Color(0xFFE3F2FD), const Color(0xFFF3E5F5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -652,8 +673,11 @@ class _ChatScreenState extends State<ChatScreen> {
           // Message
           Row(
             children: [
-              const Icon(Icons.handshake_rounded,
-                  size: 24, color: Color(0xFF1565C0)),
+              const Icon(
+                Icons.handshake_rounded,
+                size: 24,
+                color: Color(0xFF1565C0),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -785,9 +809,7 @@ class _ChatScreenState extends State<ChatScreen> {
       stream: _chatService.ecouterMessages(_conversationId!),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         if (snapshot.hasError) {
@@ -810,8 +832,11 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.chat_bubble_outline_rounded,
-                    size: 64, color: Colors.grey.shade300),
+                Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 64,
+                  color: Colors.grey.shade300,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Aucun message pour le moment.\nEnvoyez le premier message !',
@@ -843,8 +868,7 @@ class _ChatScreenState extends State<ChatScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
           itemCount: messages.length,
           itemBuilder: (context, index) {
-            final message =
-                ChatMessage.fromFirestore(messages[index]);
+            final message = ChatMessage.fromFirestore(messages[index]);
             final estMoi = message.envoyePar == currentUser.uid;
 
             return _buildChatBubble(
@@ -871,8 +895,9 @@ class _ChatScreenState extends State<ChatScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
-        mainAxisAlignment:
-            estMoi ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: estMoi
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           // Espace pour aligner les bulles
@@ -892,12 +917,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 borderRadius: BorderRadius.only(
                   topLeft: const Radius.circular(18),
                   topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(
-                    estMoi ? 18 : 4,
-                  ),
-                  bottomRight: Radius.circular(
-                    estMoi ? 4 : 18,
-                  ),
+                  bottomLeft: Radius.circular(estMoi ? 18 : 4),
+                  bottomRight: Radius.circular(estMoi ? 4 : 18),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -1014,5 +1035,166 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  /// Ouvre un dialogue pour signaler le destinataire avec motif et description.
+  void _ouvrirDialogSignalement() {
+    final motifs = [
+      'Harcèlement',
+      'Langage offensant',
+      'Information trompeuse',
+      'Escroquerie',
+      'Contenu inapproprié',
+      'Autre',
+    ];
+
+    String motifSelectionne = motifs.first;
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Signaler cet utilisateur'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Motif du signalement :',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButton<String>(
+                      value: motifSelectionne,
+                      isExpanded: true,
+                      items: motifs.map((motif) {
+                        return DropdownMenuItem(
+                          value: motif,
+                          child: Text(motif),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          motifSelectionne = value ?? motifs.first;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Description supplémentaire :',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: descriptionController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'Décrivez brièvement le problème...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Annuler'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await _traiterSignalement(
+                      motifSelectionne,
+                      descriptionController.text,
+                    );
+                    descriptionController.dispose();
+                  },
+                  child: const Text('Signaler'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Traite le signalement : enregistre en BD et affiche un message de confirmation.
+  Future<void> _traiterSignalement(String motif, String description) async {
+    try {
+      final monUid = _auth.currentUser?.uid;
+      final monRole = _monRole;
+
+      if (monUid == null || monRole == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur : données utilisateur manquantes'),
+          ),
+        );
+        return;
+      }
+
+      final destinataireNom =
+          '${_destinataireInfos?['prenom'] ?? ''} ${_destinataireInfos?['nom'] ?? ''}'
+              .trim();
+
+      // Déterminer le type de signalement basé sur les rôles
+      String typeSignalement;
+      if (monRole == 'etudiant') {
+        // Un étudiant signale (vers bailleur ou vers étudiant)
+        // Vérifier le rôle du destinataire
+        final destinataireRole =
+            _destinataireInfos?['role'] as String? ?? 'etudiant';
+        typeSignalement = destinataireRole == 'bailleur'
+            ? 'etudiant_vers_bailleur'
+            : 'etudiant_vers_etudiant';
+      } else if (monRole == 'bailleur') {
+        // Un bailleur signale un étudiant
+        typeSignalement = 'bailleur_vers_etudiant';
+      } else {
+        typeSignalement = 'utilisateur';
+      }
+
+      // Créer le signalement avec référence à la conversation
+      await _userService.signalerUtilisateur(
+        typeSignalement: typeSignalement,
+        idUtilisateurSignale: widget.destinataireId,
+        nomUtilisateurSignale: destinataireNom,
+        motif: motif,
+        description: description.isEmpty
+            ? 'Signalement émis lors d\'une conversation'
+            : description,
+        conversationId: _conversationId,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Signalement envoyé à l\'équipe d\'administration',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.green.shade600,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors du signalement : $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.red.shade600,
+          ),
+        );
+      }
+    }
   }
 }

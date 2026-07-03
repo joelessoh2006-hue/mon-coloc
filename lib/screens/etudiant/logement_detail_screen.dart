@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/chat_screen.dart';
+import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/services/visite_service.dart';
+import 'package:mon_coloc/widgets/secure_image_widget.dart';
 
 /// Écran de détail d'un logement.
 ///
@@ -39,6 +41,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
 
   /// Identifiant du bailleur depuis les données du logement.
   String? _idBailleur;
+  final UserService _userService = UserService();
 
   @override
   void initState() {
@@ -112,12 +115,90 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
     return '${visible.substring(0, 2)} ${visible.substring(2, 4)} XX XX XX';
   }
 
+  Future<void> _ouvrirDialogSignalement() async {
+    final motifController = TextEditingController();
+    final confirme = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Signaler ce logement'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Indiquez le motif du signalement :'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: motifController,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText: 'Motif du signalement',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (motifController.text.trim().isEmpty) {
+                return;
+              }
+              Navigator.of(ctx).pop(true);
+            },
+            child: const Text('Envoyer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirme != true) {
+      motifController.dispose();
+      return;
+    }
+
+    final motif = motifController.text.trim();
+    motifController.dispose();
+
+    try {
+      await _userService.signalerElement(
+        type: 'logement',
+        idElement: widget.documentId,
+        motif: motif,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Signalement envoyé avec succès.'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur lors de l\'envoi du signalement : $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     // Extraction des champs avec valeurs par défaut
-    final commune = widget.logementData['commune'] as String? ?? 'Non spécifiée';
+    final commune =
+        widget.logementData['commune'] as String? ?? 'Non spécifiée';
     final quartier = widget.logementData['quartier'] as String? ?? '';
     final loyer = widget.logementData['loyer'] as int? ?? 0;
     final nombrePieces = widget.logementData['nombrePieces'] as int? ?? 0;
@@ -126,19 +207,20 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
 
     // Type de logement : "Studio" si <= 1 pièce, sinon "Appartement"
     final typeLogement = nombrePieces <= 1 ? 'Studio' : 'Appartement';
-    final piecesLabel =
-        nombrePieces <= 1 ? '$nombrePieces pièce' : '$nombrePieces pièces';
+    final piecesLabel = nombrePieces <= 1
+        ? '$nombrePieces pièce'
+        : '$nombrePieces pièces';
 
     // Formatage du loyer avec séparateur de milliers
     final loyerFormate = _formaterMontant(loyer);
 
     // Localisation complète
-    final localisation =
-        quartier.isNotEmpty ? '$commune, $quartier' : commune;
+    final localisation = quartier.isNotEmpty ? '$commune, $quartier' : commune;
 
     // Libellé caution
-    final cautionLabel =
-        cautionMois <= 1 ? 'Caution : $cautionMois mois' : 'Caution : $cautionMois mois';
+    final cautionLabel = cautionMois <= 1
+        ? 'Caution : $cautionMois mois'
+        : 'Caution : $cautionMois mois';
 
     return Scaffold(
       body: SafeArea(
@@ -240,10 +322,14 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF1E6B4E).withValues(alpha: 0.06),
+                                color: const Color(
+                                  0xFF1E6B4E,
+                                ).withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: const Color(0xFF1E6B4E).withValues(alpha: 0.2),
+                                  color: const Color(
+                                    0xFF1E6B4E,
+                                  ).withValues(alpha: 0.2),
                                 ),
                               ),
                               child: Row(
@@ -257,10 +343,11 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
                                   Expanded(
                                     child: Text(
                                       localisation,
-                                      style: theme.textTheme.bodyLarge?.copyWith(
-                                        fontWeight: FontWeight.w600,
-                                        color: const Color(0xFF1E6B4E),
-                                      ),
+                                      style: theme.textTheme.bodyLarge
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w600,
+                                            color: const Color(0xFF1E6B4E),
+                                          ),
                                     ),
                                   ),
                                 ],
@@ -309,9 +396,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
             decoration: BoxDecoration(
               color: Colors.grey.withValues(alpha: 0.04),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.grey.withValues(alpha: 0.12),
-              ),
+              border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
             ),
             child: const Center(
               child: SizedBox(
@@ -333,8 +418,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
 
   /// Affichage lorsque l'étudiant est vérifié : vrai numéro + bouton d'appel.
   Widget _contactVerifie(ThemeData theme) {
-    final telephone =
-        _bailleurTelephone ?? 'Numéro non disponible';
+    final telephone = _bailleurTelephone ?? 'Numéro non disponible';
 
     return Container(
       width: double.infinity,
@@ -404,8 +488,11 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
                   SnackBar(
                     content: Row(
                       children: [
-                        const Icon(Icons.phone_rounded,
-                            color: Colors.white, size: 20),
+                        const Icon(
+                          Icons.phone_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Text(
@@ -441,9 +528,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
           decoration: BoxDecoration(
             color: Colors.orange.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.orange.withValues(alpha: 0.3),
-            ),
+            border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -478,9 +563,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
           decoration: BoxDecoration(
             color: Colors.red.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: Colors.red.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: Colors.red.withValues(alpha: 0.15)),
           ),
           child: Row(
             children: [
@@ -534,43 +617,66 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
   // BANDEAU IMAGE (PLACEHOLDER)
   // ---------------------------------------------------------------------------
   Widget _imageBandeau(BuildContext context, ThemeData theme) {
+    final photos = widget.logementData['logementPhotos'];
+    final imageSource = (photos is List)
+        ? (photos as List)
+              .firstWhere(
+                (value) =>
+                    value is String && value.toString().trim().isNotEmpty,
+                orElse: () => '',
+              )
+              .toString()
+        : (photos is String ? photos as String : null);
+
     return Stack(
       children: [
-        // Placeholder large pour les futures images
-        Container(
+        SizedBox(
           width: double.infinity,
           height: 220,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF1E6B4E).withValues(alpha: 0.15),
-                const Color(0xFF1E6B4E).withValues(alpha: 0.05),
-                Colors.grey.withValues(alpha: 0.05),
-              ],
-            ),
-          ),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.home_rounded,
-                  size: 72,
-                  color: const Color(0xFF1E6B4E).withValues(alpha: 0.4),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Photos à venir',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
+          child: imageSource != null && imageSource.isNotEmpty
+              ? SecureImage(
+                  imageSource: imageSource,
+                  width: double.infinity,
+                  height: 220,
+                  fit: BoxFit.cover,
+                  fallbackBackgroundColor: const Color(
+                    0xFF1E6B4E,
+                  ).withValues(alpha: 0.12),
+                  fallbackIconColor: const Color(0xFF1E6B4E),
+                )
+              : Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(0xFF1E6B4E).withValues(alpha: 0.15),
+                        const Color(0xFF1E6B4E).withValues(alpha: 0.05),
+                        Colors.grey.withValues(alpha: 0.05),
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.home_rounded,
+                          size: 72,
+                          color: const Color(0xFF1E6B4E).withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Photos à venir',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
 
         // Bouton retour en haut à gauche
@@ -583,6 +689,20 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
               icon: const Icon(Icons.arrow_back_rounded),
               color: const Color(0xFF1E6B4E),
               onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+        ),
+        // Bouton signaler le logement en haut à droite
+        Positioned(
+          top: 12,
+          right: 12,
+          child: CircleAvatar(
+            backgroundColor: Colors.white.withValues(alpha: 0.9),
+            child: IconButton(
+              icon: const Icon(Icons.flag_outlined),
+              color: const Color(0xFF1E6B4E),
+              tooltip: 'Signaler ce logement',
+              onPressed: _ouvrirDialogSignalement,
             ),
           ),
         ),
@@ -606,9 +726,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
       decoration: BoxDecoration(
         color: Colors.grey.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.grey.withValues(alpha: 0.12),
-        ),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.12)),
       ),
       child: Column(
         children: [
@@ -721,7 +839,9 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
                 if (_idBailleur == null || _idBailleur!.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Impossible de contacter le bailleur : information manquante'),
+                      content: Text(
+                        'Impossible de contacter le bailleur : information manquante',
+                      ),
                       behavior: SnackBarBehavior.floating,
                     ),
                   );
@@ -737,10 +857,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
               icon: const Icon(Icons.chat_rounded, size: 20),
               label: const Text(
                 'Contacter le bailleur',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF1E6B4E),
@@ -761,10 +878,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
               icon: const Icon(Icons.calendar_month_rounded, size: 20),
               label: const Text(
                 'Demander une visite',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF1E6B4E),
