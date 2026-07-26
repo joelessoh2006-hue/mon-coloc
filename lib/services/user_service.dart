@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 
@@ -137,17 +139,15 @@ class UserService {
     });
   }
 
-  /// Téléverse une image de profil vers Firebase Storage (Compatible Web & Mobile).
-  /// Retourne l'URL de téléchargement.
+  /// Encode une image de profil en Base64 et retourne une Data URL.
   Future<String> televerserPhotoProfil({
     required String uid,
     required XFile imageFile,
   }) async {
-    final ref = _storage.ref().child('photos_profil/$uid.jpg');
     final bytes = await imageFile.readAsBytes();
-    final uploadTask = ref.putData(bytes);
-    final snapshot = await uploadTask;
-    return await snapshot.ref.getDownloadURL();
+    final base64String = base64Encode(bytes);
+    // Le uid n'est plus utilisé ici, mais conservé pour la compatibilité de l'appel.
+    return 'data:image/jpeg;base64,$base64String';
   }
 
   /// Encode un document justificatif en Base64 et retourne une Data URL.
@@ -197,5 +197,58 @@ class UserService {
   }) async {
     final base64String = base64Encode(bytes);
     return 'data:image/jpeg;base64,$base64String';
+  }
+
+  /// Encode un document justificatif pour un bailleur en une chaîne de données Base64.
+  /// Retourne une Data URL (ex: "data:image/jpeg;base64,...").
+  Future<String> televerserJustificatifBailleur({
+    required String uid,
+    required String nom,
+    Uint8List? bytes,
+    // Ajout d'une option pour compresser les images avant encodage
+    bool compresserImage = false,
+    String? chemin,
+  }) async {
+    try {
+      Uint8List? fileBytes = bytes;
+
+      // Si les bytes ne sont pas fournis mais un chemin l'est, lire le fichier.
+      if (fileBytes == null && chemin != null && chemin.isNotEmpty) {
+        fileBytes = await File(chemin).readAsBytes();
+      }
+
+      if (fileBytes != null && fileBytes.isNotEmpty) {
+        final mimeType = nom.toLowerCase().endsWith('.pdf')
+            ? 'application/pdf'
+            : 'image/jpeg';
+
+        // Si c'est une image et que la compression est demandée
+        if (mimeType == 'image/jpeg' && compresserImage) {
+          try {
+            // Utiliser le package 'image' pour décoder, redimensionner et compresser
+            final image = img.decodeImage(fileBytes);
+            if (image != null) {
+              img.Image resized = image;
+              // Redimensionner si l'image est trop grande
+              if (image.width > 1024 || image.height > 1024) {
+                resized = img.copyResize(image, width: 1024);
+              }
+              // Compresser en JPEG avec une qualité réduite
+              final compressedBytes = img.encodeJpg(resized, quality: 75);
+              final base64String = base64Encode(compressedBytes);
+              return 'data:$mimeType;base64,$base64String';
+            }
+          } catch (e) {
+            print('Erreur de compression d\'image, fallback sur l\'original: $e');
+          }
+        }
+
+        return 'data:$mimeType;base64,${base64Encode(fileBytes)}';
+      }
+      return '';
+    } catch (e) {
+      print('Erreur conversion Base64 pour justificatif bailleur : $e');
+      return '';
+    }
   }
 }

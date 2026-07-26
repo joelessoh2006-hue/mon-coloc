@@ -81,6 +81,27 @@ class ChatService {
     return conversationId;
   }
 
+  /// Recherche une conversation existante entre deux utilisateurs.
+  ///
+  /// Retourne l'ID de la conversation si trouvée, sinon null.
+  /// La recherche se base sur la présence des deux UIDs dans le champ 'membres'.
+  Future<String?> trouverConversationParMembres(
+    String uid1,
+    String uid2,
+  ) async {
+    final query = await _firestore
+        .collection('conversations')
+        .where('membres', whereIn: [
+      [uid1, uid2],
+      [uid2, uid1]
+    ]).limit(1).get();
+
+    if (query.docs.isNotEmpty) {
+      return query.docs.first.id;
+    }
+    return null;
+  }
+
   /// Propose une équipe de colocation à l'autre membre de la conversation.
   /// Cela déclenche l'affichage du bandeau d'acceptation/refus sur l'écran
   /// de l'autre étudiant.

@@ -1,13 +1,16 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:mon_coloc/services/admin_service.dart';
-import 'package:mon_coloc/services/user_service.dart';
-
+import '../../services/admin_service.dart';
+import '../../services/chat_service.dart';
+import '../../services/user_service.dart';
+import '../chat_screen.dart';
+import 'widgets/admin_bailleur_card.dart';
+import 'widgets/admin_etudiant_card.dart';
+import 'widgets/admin_logement_card.dart';
 /// Écran du back-office administrateur complet.
-/// 4 onglets : Logements, Bailleurs, Étudiants, Signalements.
+/// 5 onglets : Logements, Bailleurs en attente, Étudiants, Comptes Bloqués, Signalements.
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
 
@@ -19,12 +22,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final AdminService _adminService = AdminService();
+  final ChatService _chatService = ChatService();
   final UserService _userService = UserService();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -55,11 +59,29 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             0.6,
           ),
           isScrollable: true,
-          tabs: const [
-            Tab(icon: Icon(Icons.home_rounded), text: 'Logements'),
-            Tab(icon: Icon(Icons.people_rounded), text: 'Bailleurs'),
-            Tab(icon: Icon(Icons.school_rounded), text: 'Étudiants'),
-            Tab(icon: Icon(Icons.flag_rounded), text: 'Signalements'),
+          tabs: [
+            _buildTabWithBadge(
+              icon: Icons.home_rounded,
+              text: 'Logements',
+              stream: _adminService.ecouterLogementsEnAttente(),
+            ),
+            _buildTabWithBadge(
+              icon: Icons.people_rounded,
+              text: 'Bailleurs',
+              stream: _adminService.ecouterBailleursEnAttenteDeValidation(),
+            ),
+            _buildTabWithBadge(
+              icon: Icons.school_rounded,
+              text: 'Étudiants',
+              // Le badge compte les étudiants en attente de vérification de document
+              stream: _adminService.ecouterEtudiantsEnAttenteDeValidation(),
+            ),
+            const Tab(icon: Icon(Icons.block_rounded), text: 'Comptes Bloqués'),
+            _buildTabWithBadge(
+              icon: Icons.report_problem_rounded,
+              text: 'Signalements',
+              stream: _adminService.ecouterSignalements(),
+            ),
           ],
         ),
       ),
@@ -69,9 +91,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           _buildLogementsTab(),
           _buildBailleursTab(),
           _buildEtudiantsTab(),
+          _buildComptesBloquesTab(),
           _buildSignalementsTab(),
         ],
       ),
+    );
+  }
+
+  Widget _buildTabWithBadge({
+    required IconData icon,
+    required String text,
+    required Stream<QuerySnapshot> stream,
+    bool Function(DocumentSnapshot)? filter,
+  }) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Tab(icon: Icon(icon), text: text);
+        }
+        final docs = filter != null
+            ? snapshot.data!.docs.where(filter).toList()
+            : snapshot.data!.docs;
+        final count = docs.length;
+
+        return Badge(
+          label: Text('$count'),
+          isLabelVisible: count > 0,
+          child: Tab(icon: Icon(icon), text: text),
+        );
+      },
     );
   }
 
@@ -115,214 +164,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             final doc = documents[index];
             final data = doc.data() as Map<String, dynamic>;
             final logementId = doc.id;
-            return _buildLogementCard(logementId, data);
+            return AdminLogementCard(
+              logementId: logementId,
+              data: data,
+              onApprouver: (id) => _confirmerApprobation('logement', id),
+              onRejeter: (id, data) => _confirmerRejet('logement', id, data),
+              onAfficherMedia: _afficherMediaDialog,
+            );
           },
         );
       },
-    );
-  }
-
-  Widget _buildLogementCard(String logementId, Map<String, dynamic> data) {
-    final theme = Theme.of(context);
-    final loyer = data['loyer'] ?? 0;
-    final pieces = data['nombrePieces'] ?? 0;
-    final commune = data['commune'] ?? 'Non spécifié';
-    final quartier = data['quartier'] ?? '';
-    final description = data['description'] ?? '';
-    final photos = _safeStringList(
-      data['logementPhotos'] ?? data['photos'] ?? data['imageUrls'] ?? [],
-    );
-    final datePublication = data['datePublication'] as Timestamp?;
-    final dateStr = datePublication != null
-        ? '${datePublication.toDate().day}/${datePublication.toDate().month}/${datePublication.toDate().year}'
-        : 'Date inconnue';
-
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.orange.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête : Statut badge
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.orange.shade300),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.hourglass_empty,
-                        size: 16,
-                        color: Colors.orange.shade700,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'En attente',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  dateStr,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Mini carousel des photos
-            if (photos.isNotEmpty) ...[
-              SizedBox(
-                height: 140,
-                child: PageView.builder(
-                  itemCount: photos.length,
-                  itemBuilder: (context, index) {
-                    return GestureDetector(
-                      onTap: () => _afficherMediaDialog(photos),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            base64Decode(photos[index]),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ] else ...[
-              // Pas de photos : bouton pour en ouvrir si jamais
-              SizedBox(
-                height: 100,
-                child: Center(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _afficherMediaDialog(photos),
-                    icon: const Icon(Icons.image_rounded),
-                    label: const Text('Aucune photo'),
-                  ),
-                ),
-              ),
-            ],
-
-            // Localisation
-            Row(
-              children: [
-                Icon(
-                  Icons.location_on_rounded,
-                  size: 20,
-                  color: Colors.red.shade400,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '$commune${quartier.isNotEmpty ? ' — $quartier' : ''}',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Loyer et pièces
-            Row(
-              children: [
-                _infoChip(
-                  Icons.monetization_on_rounded,
-                  '${_formatMontant(loyer)} FCFA/mois',
-                  Colors.green.shade700,
-                ),
-                const SizedBox(width: 12),
-                _infoChip(
-                  Icons.meeting_room_rounded,
-                  '$pieces pièce(s)',
-                  Colors.blue.shade700,
-                ),
-              ],
-            ),
-
-            if (description.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-
-            // Boutons d'action
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _confirmerRejet('logement', logementId, data),
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                    label: const Text('Rejeter'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red.shade700,
-                      side: BorderSide(color: Colors.red.shade300),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: () =>
-                        _confirmerApprobation('logement', logementId),
-                    icon: const Icon(Icons.check_rounded, size: 18),
-                    label: const Text('Approuver'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -330,8 +181,67 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // ONGLET BAILLEURS
   // ===========================================================================
   Widget _buildBailleursTab() {
+    // Filtre strict : Écoute UNIQUEMENT les comptes où role == 'bailleur', estVerifie == false ET estBloque == false.
     return StreamBuilder<QuerySnapshot>(
-      stream: _adminService.ecouterBailleursEnAttente(),
+      stream: _adminService.ecouterBailleursEnAttenteDeValidation(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Erreur : ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        final bailleurs = snapshot.data?.docs ?? [];
+
+        if (bailleurs.isEmpty) {
+          return _buildEmptyState(
+            icon: Icons.people_rounded,
+            message: 'Aucun bailleur en attente de validation',
+          );
+        }
+
+        bailleurs.sort((a, b) {
+          return (b.data() as Map<String, dynamic>)['dateInscription']
+              .compareTo((a.data() as Map<String, dynamic>)['dateInscription']);
+        });
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: bailleurs.length,
+          itemBuilder: (_, index) {
+            final doc = bailleurs[index];
+            final data = doc.data() as Map<String, dynamic>;
+            final bailleurUid = doc.id;
+            return AdminBailleurCard(
+              uid: bailleurUid,
+              data: data,
+              onApprouver: (uid) => _confirmerApprobation('bailleur', uid),
+              onBloquerDebloquer: _confirmerBlocageDeblocage,
+              onAfficherJustificatif: _afficherJustificatif,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ===========================================================================
+  // ONGLET ÉTUDIANTS
+  // ===========================================================================
+  Widget _buildEtudiantsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _adminService.ecouterEtudiantsEnAttenteDeValidation(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -354,298 +264,55 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
         if (documents.isEmpty) {
           return _buildEmptyState(
-            icon: Icons.people_rounded,
-            message: 'Aucun bailleur en attente de validation',
+            icon: Icons.school_rounded,
+            message: 'Aucun étudiant en attente de vérification',
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: documents.length,
-          itemBuilder: (_, index) {
-            final doc = documents[index];
-            final data = doc.data() as Map<String, dynamic>;
-            final bailleurUid = doc.id;
-            return _buildBailleurCard(bailleurUid, data);
-          },
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Text(
+                'Étudiants à vérifier (${documents.length})',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: documents.length,
+                itemBuilder: (_, index) {
+                  final doc = documents[index];
+                  final data = doc.data() as Map<String, dynamic>;
+                  final uid = doc.id;
+                  return AdminEtudiantCard(
+                    uid: uid,
+                    data: data,
+                    onVerifier: _confirmerVerificationEtudiant,
+                    onBloquerDebloquer: _confirmerBlocageDeblocage,
+                    onAfficherJustificatif: _afficherJustificatif,
+                  );
+                },
+              ),
+            ),
+          ],
         );
       },
     );
-  }
-
-  Widget _buildBailleurCard(String uid, Map<String, dynamic> data) {
-    final theme = Theme.of(context);
-    final nom = data['nom'] ?? '';
-    final prenom = data['prenom'] ?? '';
-    final email = data['email'] ?? '';
-    final telephone = data['telephone'] ?? '';
-    final ecole = data['ecoleUniversite'] ?? '';
-    final photoUrl = data['photoUrl'] as String?;
-    final justificatifUrl = data['justificatifUrl'] as String?;
-    final estVerifie = data['estVerifie'] as bool? ?? false;
-    final estBloque = data['estBloque'] as bool? ?? false;
-    final dateInscription = data['dateInscription'] as Timestamp?;
-    final dateStr = dateInscription != null
-        ? '${dateInscription.toDate().day}/${dateInscription.toDate().month}/${dateInscription.toDate().year}'
-        : 'Date inconnue';
-
-    final initiale = (prenom as String).isNotEmpty
-        ? prenom[0].toUpperCase()
-        : (nom as String).isNotEmpty
-        ? nom[0].toUpperCase()
-        : '?';
-
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.orange.shade200),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // En-tête
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  backgroundImage: photoUrl != null
-                      ? NetworkImage(photoUrl)
-                      : null,
-                  child: photoUrl == null
-                      ? Text(
-                          initiale,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$prenom $nom',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        email,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  children: [
-                    if (estVerifie)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '✓ Vérifié',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'en_attente',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.orange.shade700,
-                          ),
-                        ),
-                      ),
-                    if (estBloque) ...[
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'BLOQUÉ',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.red.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            if (telephone.isNotEmpty) ...[
-              _infoRow(Icons.phone_rounded, 'Tél : $telephone'),
-              const SizedBox(height: 4),
-            ],
-            if (ecole.isNotEmpty) ...[
-              _infoRow(Icons.school_rounded, 'École : $ecole'),
-              const SizedBox(height: 4),
-            ],
-            _infoRow(Icons.calendar_today_rounded, 'Inscrit le $dateStr'),
-
-            // Document justificatif (CNI)
-            if (justificatifUrl != null) ...[
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.document_scanner_rounded,
-                    size: 18,
-                    color: Colors.blue.shade600,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Document justificatif (CNI)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => _afficherJustificatif(justificatifUrl),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.visibility_rounded,
-                            size: 16,
-                            color: Colors.blue.shade700,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Voir',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.blue.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 12),
-
-            // Boutons d'action
-            Row(
-              children: [
-                // Bouton bloquer/débloquer
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _confirmerBlocageDeblocage(uid, nom, prenom, estBloque),
-                    icon: Icon(
-                      estBloque ? Icons.lock_open_rounded : Icons.block_rounded,
-                      size: 18,
-                    ),
-                    label: Text(estBloque ? 'Débloquer' : 'Bloquer'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: estBloque
-                          ? Colors.green.shade700
-                          : Colors.red.shade700,
-                      side: BorderSide(
-                        color: estBloque
-                            ? Colors.green.shade300
-                            : Colors.red.shade300,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                if (!estBloque) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => _confirmerApprobation('bailleur', uid),
-                      icon: const Icon(Icons.check_rounded, size: 18),
-                      label: const Text('Approuver'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green.shade600,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
+    
   }
 
   // ===========================================================================
-  // ONGLET ÉTUDIANTS
+  // ONGLET COMPTES BLOQUÉS
   // ===========================================================================
-  Widget _buildEtudiantsTab() {
+  Widget _buildComptesBloquesTab() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _adminService.ecouterEtudiantsAVerifier(),
+      stream: _adminService.ecouterComptesBloques(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -664,70 +331,43 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           );
         }
 
-        final documents = (snapshot.data?.docs ?? []).where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final justificatifUrl = data['justificatifUrl'] as String?;
-          return justificatifUrl != null && justificatifUrl.isNotEmpty;
-        }).toList();
+        final documents = snapshot.data?.docs ?? [];
 
         if (documents.isEmpty) {
           return _buildEmptyState(
-            icon: Icons.school_rounded,
-            message: 'Aucun étudiant en attente de vérification',
+            icon: Icons.block_rounded,
+            message: 'Aucun compte bloqué pour le moment',
           );
         }
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Text(
-                'Étudiants non vérifiés (${documents.length})',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: documents.length,
-                itemBuilder: (_, index) {
-                  final doc = documents[index];
-                  final data = doc.data() as Map<String, dynamic>;
-                  final uid = doc.id;
-                  return _buildEtudiantCard(uid, data);
-                },
-              ),
-            ),
-          ],
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: documents.length,
+          itemBuilder: (_, index) {
+            final doc = documents[index];
+            final data = doc.data() as Map<String, dynamic>;
+            final uid = doc.id;
+            return _buildCompteBloqueCard(uid, data);
+          },
         );
       },
     );
   }
 
-  Widget _buildEtudiantCard(String uid, Map<String, dynamic> data) {
+  Widget _buildCompteBloqueCard(String uid, Map<String, dynamic> data) {
     final theme = Theme.of(context);
     final nom = data['nom'] ?? '';
     final prenom = data['prenom'] ?? '';
-    final email = data['email'] ?? '';
-    final telephone = data['telephone'] ?? '';
-    final ecole = data['ecoleUniversite'] ?? '';
-    final filiere = data['filiere'] ?? '';
-    final photoUrl = data['photoUrl'] as String?;
-    final justificatifUrl = data['justificatifUrl'] as String?;
-    final estVerifie = data['estVerifie'] as bool? ?? false;
-    final estBloque = data['estBloque'] as bool? ?? false;
-    final dateInscription = data['dateInscription'] as Timestamp?;
-    final dateStr = dateInscription != null
-        ? '${dateInscription.toDate().day}/${dateInscription.toDate().month}/${dateInscription.toDate().year}'
+    final role = data['role'] as String? ?? 'Inconnu';
+    final dateBlocage = data['dateBlocage'] as Timestamp?;
+    final dateStr = dateBlocage != null
+        ? '${dateBlocage.toDate().day}/${dateBlocage.toDate().month}/${dateBlocage.toDate().year}'
         : 'Date inconnue';
+    final explicationsRecours = data['explicationsRecours'] as String?;
 
-    final initiale = (prenom as String).isNotEmpty
+    final initiale = prenom.isNotEmpty
         ? prenom[0].toUpperCase()
-        : (nom as String).isNotEmpty
+        : nom.isNotEmpty
         ? nom[0].toUpperCase()
         : '?';
 
@@ -736,34 +376,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: estVerifie ? Colors.green.shade200 : Colors.orange.shade200,
-        ),
+        side: BorderSide(color: Colors.red.shade200),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // En-tête
             Row(
               children: [
                 CircleAvatar(
                   radius: 28,
-                  backgroundColor: theme.colorScheme.primaryContainer,
-                  backgroundImage: photoUrl != null
-                      ? NetworkImage(photoUrl)
-                      : null,
-                  child: photoUrl == null
-                      ? Text(
-                          initiale,
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onPrimaryContainer,
-                          ),
-                        )
-                      : null,
+                  backgroundColor: theme.colorScheme.errorContainer,
+                  child: Text(
+                    initiale,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -779,7 +411,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        email,
+                        'Rôle : ${role[0].toUpperCase()}${role.substring(1)}',
                         style: TextStyle(
                           fontSize: 13,
                           color: Colors.grey.shade600,
@@ -788,200 +420,47 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     ],
                   ),
                 ),
-                Column(
-                  children: [
-                    if (estVerifie)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          '✓ Vérifié',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.green.shade700,
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Non vérifié',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.orange.shade700,
-                          ),
-                        ),
-                      ),
-                    if (estBloque) ...[
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'BLOQUÉ',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.red.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+                _StatusBadge(estVerifie: false, estBloque: true),
               ],
             ),
             const SizedBox(height: 12),
-
-            if (telephone.isNotEmpty) ...[
-              _infoRow(Icons.phone_rounded, 'Tél : $telephone'),
-              const SizedBox(height: 4),
-            ],
-            if (ecole.isNotEmpty)
-              _infoRow(Icons.school_rounded, 'École : $ecole'),
-            if (filiere.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _infoRow(Icons.menu_book_rounded, 'Filière : $filiere'),
-            ],
-            const SizedBox(height: 4),
-            _infoRow(Icons.calendar_today_rounded, 'Inscrit le $dateStr'),
-
-            // Document justificatif (carte d'étudiant / CNI)
-            if (justificatifUrl != null) ...[
+           Row(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Icon(Icons.comment_rounded, size: 16, color: Colors.grey.shade600),
+    const SizedBox(width: 8),
+    Expanded(
+      child: Text(
+        'Recours : $explicationsRecours',
+        style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+      ),
+    ),
+  ],
+),
+            if (explicationsRecours != null &&
+                explicationsRecours.isNotEmpty) ...[
               const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.document_scanner_rounded,
-                    size: 18,
-                    color: Colors.blue.shade600,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Pièce d\'identité',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => _afficherJustificatif(justificatifUrl),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.visibility_rounded,
-                            size: 16,
-                            color: Colors.blue.shade700,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Voir',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.blue.shade700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              _infoRow(Icons.comment_rounded, 'Recours : $explicationsRecours'),
             ],
-
             const SizedBox(height: 16),
             const Divider(height: 1),
             const SizedBox(height: 12),
-
-            // Boutons d'action
-            Row(
-              children: [
-                // Bouton bloquer/débloquer
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () =>
-                        _confirmerBlocageDeblocage(uid, nom, prenom, estBloque),
-                    icon: Icon(
-                      estBloque ? Icons.lock_open_rounded : Icons.block_rounded,
-                      size: 18,
-                    ),
-                    label: Text(estBloque ? 'Débloquer' : 'Bloquer'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: estBloque
-                          ? Colors.green.shade700
-                          : Colors.red.shade700,
-                      side: BorderSide(
-                        color: estBloque
-                            ? Colors.green.shade300
-                            : Colors.red.shade300,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () =>
+                    _confirmerBlocageDeblocage(uid, nom, prenom, true),
+                icon: const Icon(Icons.lock_open_rounded, size: 18),
+                label: const Text('Débloquer le compte'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.green.shade600,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                if (!estBloque) ...[
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () =>
-                          _confirmerVerificationEtudiant(uid, estVerifie),
-                      icon: Icon(
-                        estVerifie
-                            ? Icons.undo_rounded
-                            : Icons.verified_user_rounded,
-                        size: 18,
-                      ),
-                      label: Text(estVerifie ? 'Rétirer' : 'Vérifier'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: estVerifie
-                            ? Colors.orange.shade600
-                            : Colors.green.shade600,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ],
         ),
@@ -1017,7 +496,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
 
         if (documents.isEmpty) {
           return _buildEmptyState(
-            icon: Icons.flag_rounded,
+            icon: Icons.report_problem_rounded,
             message: 'Aucun signalement pour le moment',
           );
         }
@@ -1076,6 +555,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       typeIcon = Icons.group_rounded;
       typeLabel = 'Étud. → Étud.';
     } else {
+      // Fallback pour les anciens signalements ou 'utilisateur'
       typeIcon = Icons.person_rounded;
       typeLabel = 'Utilisateur';
     }
@@ -1196,14 +676,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(
-    content: Text('Conversation : ${data['idElement'] ?? 'Inconnue'}'),
-    behavior: SnackBarBehavior.floating,
-  ),
-);
-                      },
+                      onPressed: () => _voirConversation(
+                        conversationId: conversationId,
+                        auteurId: data['auteurId'] as String?,
+                        cibleId: cibleId,
+                      ),
                       icon: const Icon(Icons.chat_rounded, size: 18),
                       label: const Text('Voir conv.'),
                       style: OutlinedButton.styleFrom(
@@ -1246,6 +723,70 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ),
       ),
     );
+  }
+
+  // ===========================================================================
+  // NAVIGATION & ACTIONS
+  // ===========================================================================
+
+  /// Ouvre l'écran de chat pour une conversation liée à un signalement.
+  Future<void> _voirConversation({
+    String? conversationId,
+    String? auteurId,
+    String? cibleId,
+  }) async {
+    if (auteurId == null || cibleId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'IDs des participants manquants pour trouver la conversation.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    String? finalConversationId = conversationId;
+
+    // Si l'ID de conversation n'est pas directement dans le signalement,
+    // on essaie de le trouver avec les IDs des membres.
+    if (finalConversationId == null || finalConversationId.isEmpty) {
+      finalConversationId = await _chatService.trouverConversationParMembres(
+        auteurId,
+        cibleId,
+      );
+    }
+
+    if (finalConversationId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Aucune conversation trouvée entre ces deux utilisateurs.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            conversationId: finalConversationId,
+            // Pour l'admin, le destinataire est arbitraire, on prend la cible.
+            destinataireId: cibleId,
+            // On passe l'auteur comme "participant 1" pour que ses bulles
+            // s'affichent à gauche, et celles de la cible à droite.
+            participantUnId: auteurId,
+            estModeAdmin: true,
+          ),
+        ),
+      );
+    }
   }
 
   // ===========================================================================
@@ -1362,8 +903,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     if (url.startsWith('data:image')) {
                       final base64Part = url.split(',').last;
                       bytes = base64Decode(base64Part);
-                    } else {
-                      bytes = base64Decode(url);
                     }
                   } catch (_) {
                     bytes = null;
@@ -1373,10 +912,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     return Image.memory(bytes);
                   }
 
+                  // Fallback pour les anciennes URLs de Firebase Storage
                   return Image.network(
                     url,
-                    errorBuilder: (_, __, ___) =>
-                        const Icon(Icons.broken_image_rounded),
+                    errorBuilder: (_, __, ___) => const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.broken_image_rounded, size: 48),
+                        SizedBox(height: 8),
+                        Text('Impossible d\'afficher le document'),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -1390,46 +936,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   // ===========================================================================
   // AIDE VISUELLE
   // ===========================================================================
-  Widget _infoChip(IconData icon, String texte, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 4),
-          Text(
-            texte,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _infoRow(IconData icon, String texte) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey.shade600),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            texte,
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildEmptyState({required IconData icon, required String message}) {
     return Center(
       child: Column(
@@ -1451,28 +957,20 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  String _formatMontant(dynamic montant) {
-    if (montant == null) return '0';
-    final nombre = montant is int
-        ? montant
-        : int.tryParse(montant.toString()) ?? 0;
-    final str = nombre.toString();
-    final buffer = StringBuffer();
-    for (int i = 0; i < str.length; i++) {
-      if (i > 0 && (str.length - i) % 3 == 0) {
-        buffer.write(' ');
-      }
-      buffer.write(str[i]);
-    }
-    return buffer.toString();
-  }
-
-  /// Convertit un champ potentiellement List ou null en List<String>.
-  List<String> _safeStringList(dynamic value) {
-    if (value == null) return [];
-    if (value is List) return List<String>.from(value.map((e) => e.toString()));
-    if (value is String) return [value];
-    return [];
+  Widget _infoRow(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.grey.shade600),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+          ),
+        ),
+      ],
+    );
   }
 
   // ===========================================================================
@@ -1833,5 +1331,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         ),
       );
     }
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final bool estVerifie;
+  final bool estBloque;
+
+  const _StatusBadge({required this.estVerifie, required this.estBloque});
+
+  @override
+  Widget build(BuildContext context) {
+    if (estBloque) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+        child: Text('BLOQUÉ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+      );
+    }
+    if (estVerifie) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+        child: Text('✓ Vérifié', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
+      child: Text('En attente', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade700)),
+    );
   }
 }

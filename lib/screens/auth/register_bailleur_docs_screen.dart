@@ -78,6 +78,15 @@ class _RegisterBailleurDocsScreenState
           return;
         }
 
+        // Vérification de la taille du fichier (500 Ko)
+        const maxSizeInBytes = 500 * 1024;
+        if (bytes.lengthInBytes > maxSizeInBytes) {
+          _afficherErreur(
+            "Le fichier '$nom' est trop lourd (max 500 Ko). Veuillez choisir un fichier plus léger ou le compresser.",
+          );
+          return;
+        }
+
         setState(() {
           switch (index) {
             case 0:

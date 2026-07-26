@@ -1,10 +1,11 @@
 // Écran d'inscription dédié aux bailleurs
 // Demande : Nom, Prénom, Adresse email, Mot de passe, Numéro de téléphone
 // PAS de champ École/Université ni de budget
-// Après validation → redirige vers RegisterBailleurDocsScreen
+// Après validation -> redirige vers RegisterBailleurDocsScreen
 
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,11 +13,16 @@ import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/auth_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_bailleur_docs_screen.dart';
+import 'package:image/image.dart' as img; // Import pour la compression
+import 'dart:io';
 
 class RegisterBailleurScreen extends StatefulWidget {
   final VoidCallback onInscriptionTerminee;
 
-  const RegisterBailleurScreen({super.key, required this.onInscriptionTerminee});
+  const RegisterBailleurScreen({
+    super.key,
+    required this.onInscriptionTerminee,
+  });
 
   @override
   State<RegisterBailleurScreen> createState() => _RegisterBailleurScreenState();
@@ -86,59 +92,37 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
   Future<void> _finaliserInscription() async {
     setState(() => _enChargement = true);
 
+    User? firebaseUser; // Déclarer pour qu'il soit accessible dans le catch
+
     try {
       // 1. Création du compte Firebase Auth
       final cred = await _authService.creerCompte(
         email: _email,
         motDePasse: _motDePasse,
       );
+      firebaseUser = cred.user; // Affectation sans re-déclarer 'final'
 
-      final firebaseUser = cred.user;
       if (firebaseUser == null) {
         throw Exception(
-            "L'utilisateur Firebase est null après la création du compte.");
+          "L'utilisateur Firebase est null après la création du compte.",
+        );
       }
 
-      // 2. Sauvegarde dans Firestore
-      final user = UserModel(
-        uid: firebaseUser.uid,
-        email: _email,
-        nom: _nom,
-        prenom: _prenom,
-        telephone: _telephone,
-        ecoleUniversite: '', // Pas d'école pour le bailleur
-        role: 'bailleur',
-        estVerifie: false,
-        // Valeurs par défaut pour les champs étudiant (non utilisés)
-        budgetMaxFCFA: 0,
-        quartierCible: [],
-        statutLogement: StatutLogement.chercheUnLogement,
-        sexe: Sexe.homme,
-        accepteMixite: false,
-        proprete: Proprete.propre,
-        rythmeDeVie: RythmeDeVie.leveTot,
-        fumeur: false,
-        statutAnimaux: StatutAnimaux.non,
-        typeAnimaux: null,
-        bruitsFortsVolume: false,
-        appelsFrequents: false,
-        soireesAmis: false,
-        besoinSilence: false,
-        horaireRevision: HoraireRevision.flexible,
-      );
+      // 2. Téléversement des documents et création du modèle utilisateur
+      final documentsUrls = await _televerserDocuments(firebaseUser.uid);
+      final user = _creerModeleUtilisateur(firebaseUser.uid, documentsUrls);
 
+      // 3. Sauvegarde dans Firestore
       await _userService.sauvegarderUtilisateur(user);
 
       if (!mounted) return;
 
-      // 3. Retour à l'écran d'accueil (pop jusqu'à la racine)
+      // 4. Retour à l'écran d'accueil (pop jusqu'à la racine)
       Navigator.of(context).popUntil((route) => route.isFirst);
-
       widget.onInscriptionTerminee();
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() => _enChargement = false);
-
       String message;
       switch (e.code) {
         case 'email-already-in-use':
@@ -159,9 +143,90 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       if (!mounted) return;
       setState(() => _enChargement = false);
 
-      debugPrint('Erreur inscription bailleur : $e\n$stackTrace');
-      _afficherErreur('Une erreur est survenue. Veuillez réessayer.');
+      // Log détaillé de l'erreur dans la console
+      debugPrint(
+        '================ ERREUR INSCRIPTION BAILLEUR ================',
+      );
+      debugPrint('Erreur: $e');
+      debugPrint('StackTrace: $stackTrace');
+      debugPrint('===========================================================');
+
+      // Si une erreur survient après la création du compte, on le supprime.
+      if (firebaseUser != null) {
+        try {
+          await firebaseUser.delete();
+          debugPrint('Utilisateur Firebase Auth temporaire supprimé.');
+        } catch (deleteError) {
+          /* Silencieux */
+        }
+      }
+
+      // Afficher l'erreur brute dans un SnackBar
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Erreur inscription : $e')));
     }
+  }
+
+  /// Téléverse les documents et retourne la liste des URLs.
+  Future<List<String>> _televerserDocuments(String uid) async {
+    final List<String> documentsUrls = [];
+    final fichiersValides = _fichiersDocuments
+        .whereType<FichierDocument>()
+        .toList();
+
+    for (final doc in fichiersValides) {
+      // Sur le Web, on doit impérativement avoir des bytes
+      final bytes = doc.bytes;
+      final chemin = kIsWeb ? null : doc.chemin;
+
+      if (bytes == null && chemin == null) {
+        debugPrint(
+          'Fichier ignoré : aucun contenu disponible (bytes et chemin sont nulls).',
+        );
+        continue;
+      }
+
+      final url = await _userService.televerserJustificatifBailleur(
+        uid: uid,
+        nom: doc.nom,
+        bytes: bytes,
+        chemin: chemin,
+        compresserImage: true, // Activer la compression pour les images
+      );
+      documentsUrls.add(url);
+    }
+    return documentsUrls;
+  }
+
+  /// Crée une instance de UserModel pour le bailleur.
+  UserModel _creerModeleUtilisateur(String uid, List<String> documentsUrls) {
+    return UserModel(
+      uid: uid,
+      email: _email,
+      nom: _nom,
+      prenom: _prenom,
+      telephone: _telephone,
+      ecoleUniversite: '', // Pas d'école pour le bailleur
+      role: 'bailleur',
+      estVerifie: false,
+      budgetMaxFCFA: 0,
+      quartierCible: [],
+      statutLogement: StatutLogement.chercheUnLogement,
+      sexe: Sexe.homme,
+      accepteMixite: false,
+      proprete: Proprete.propre,
+      rythmeDeVie: RythmeDeVie.leveTot,
+      fumeur: false,
+      statutAnimaux: StatutAnimaux.non,
+      typeAnimaux: null,
+      bruitsFortsVolume: false,
+      appelsFrequents: false,
+      soireesAmis: false,
+      besoinSilence: false, // Ajouté
+      horaireRevision: HoraireRevision.flexible,
+      documentsUrls: documentsUrls,
+    );
   }
 
   void _afficherErreur(String message) {
@@ -197,7 +262,8 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                           onPressed: () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.arrow_back_rounded, size: 24),
                           style: IconButton.styleFrom(
-                            backgroundColor: theme.colorScheme.surfaceContainerLow,
+                            backgroundColor:
+                                theme.colorScheme.surfaceContainerLow,
                             foregroundColor: theme.colorScheme.onSurfaceVariant,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -249,8 +315,9 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                         if (val == null || val.trim().isEmpty) {
                           return 'Veuillez entrer votre adresse email';
                         }
-                        if (!RegExp(r'^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$')
-                            .hasMatch(val.trim())) {
+                        if (!RegExp(
+                          r'^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$',
+                        ).hasMatch(val.trim())) {
                           return 'Adresse email invalide';
                         }
                         return null;
@@ -330,7 +397,9 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                             Text(
                               'Suivant',
                               style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.w700),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             SizedBox(width: 8),
                             Icon(Icons.arrow_forward_rounded, size: 20),

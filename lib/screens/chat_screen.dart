@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
+import 'package:mon_coloc/screens/mon_profil_screen.dart';
 
 /// Écran de chat en temps réel entre deux utilisateurs.
 ///
@@ -16,12 +17,18 @@ class ChatScreen extends StatefulWidget {
   final String? conversationId;
   final String destinataireId;
   final String? messageInitial;
+  /// Utilisé par l'admin pour voir une conversation. Permet de définir qui est "à gauche".
+  final String? participantUnId;
+  /// Si true, masque la zone de saisie et affiche un bandeau "lecture seule".
+  final bool estModeAdmin;
 
   const ChatScreen({
     super.key,
     this.conversationId,
     required this.destinataireId,
     this.messageInitial,
+    this.participantUnId,
+    this.estModeAdmin = false,
   });
 
   @override
@@ -70,6 +77,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// Rôle de l'utilisateur connecté (etudiant / bailleur)
   String? _monRole;
 
+  /// Statut de vérification de l'utilisateur connecté
+  bool _estVerifie = false;
+
   /// Flag local : l'utilisateur a refusé de proposer la colocation
   bool _aRefuseProposition = false;
 
@@ -104,6 +114,7 @@ class _ChatScreenState extends State<ChatScreen> {
         if (monDoc.exists && mounted) {
           setState(() {
             _monRole = monDoc.data()?['role'] as String?;
+            _estVerifie = monDoc.data()?['estVerifie'] as bool? ?? false;
           });
         }
       }
@@ -201,6 +212,38 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _proposerEquipe() async {
     if (_conversationId == null) return;
+
+    // --- NOUVELLE VÉRIFICATION ---
+    // Bloquer si l'utilisateur n'est pas vérifié
+    if (!_estVerifie) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Profil non vérifié'),
+          content: const Text(
+            "Vous devez faire vérifier votre profil avant de pouvoir envoyer une demande de colocation.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Fermer'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(ctx).pop(); // Ferme la dialog
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MonProfilScreen(),
+                  ),
+                );
+              },
+              child: const Text('Aller au profil'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
 
     try {
       // Envoyer un message automatique dans le chat
@@ -458,14 +501,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Column(
       children: [
+        // Bannière pour le mode consultation admin
+        if (widget.estModeAdmin) _buildAdminBanner(theme),
+
         // Bannière de demande d'équipe (si applicable)
         _buildColocationBanner(),
 
         // Zone des messages
         Expanded(child: _construireListeMessages(theme)),
 
-        // Zone de saisie
-        _construireZoneSaisie(theme),
+        // Zone de saisie (masquée en mode admin)
+        if (!widget.estModeAdmin) _construireZoneSaisie(theme),
       ],
     );
   }
@@ -869,7 +915,9 @@ class _ChatScreenState extends State<ChatScreen> {
           itemCount: messages.length,
           itemBuilder: (context, index) {
             final message = ChatMessage.fromFirestore(messages[index]);
-            final estMoi = message.envoyePar == currentUser.uid;
+            // Si on est en mode "observateur" (admin), on se base sur participantUnId
+            // Sinon, on se base sur l'utilisateur connecté.
+            final estMoi = widget.participantUnId != null ? message.envoyePar != widget.participantUnId : message.envoyePar == currentUser.uid;
 
             return _buildChatBubble(
               message: message,
@@ -959,6 +1007,30 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
 
           if (!estMoi) const SizedBox(width: 60),
+        ],
+      ),
+    );
+  }
+
+  /// Affiche une bannière pour le mode consultation admin.
+  Widget _buildAdminBanner(ThemeData theme) {
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.errorContainer.withOpacity(0.6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.visibility_rounded,
+            size: 18,
+            color: theme.colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Mode consultation (Lecture seule)',
+            style: TextStyle(fontWeight: FontWeight.w600, color: theme.colorScheme.onErrorContainer),
+          ),
         ],
       ),
     );

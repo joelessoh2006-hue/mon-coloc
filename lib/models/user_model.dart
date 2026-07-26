@@ -1,37 +1,16 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum StatutLogement {
-  aDejaUnLogement,
-  chercheUnLogement,
-}
+enum StatutLogement { aDejaUnLogement, chercheUnLogement }
 
-enum Sexe {
-  homme,
-  femme,
-}
+enum Sexe { homme, femme }
 
-enum StatutAnimaux {
-  non,
-  enAPossession,
-  tolere,
-}
+enum StatutAnimaux { non, enAPossession, tolere }
 
-enum HoraireRevision {
-  jour,
-  nuit,
-  flexible,
-}
+enum HoraireRevision { jour, nuit, flexible }
 
-enum RythmeDeVie {
-  leveTot,
-  coucheTard,
-}
+enum RythmeDeVie { leveTot, coucheTard }
 
-enum Proprete {
-  tresPropre,
-  propre,
-  moyen,
-}
+enum Proprete { tresPropre, propre, moyen }
 
 /// Modèle utilisateur complet pour l'application Mon Coloc.
 /// Stocké dans la collection Firestore 'users'.
@@ -63,6 +42,9 @@ class UserModel {
 
   /// URL du document justificatif (Firebase Storage)
   final String? justificatifUrl;
+
+  /// URLs des documents justificatifs pour le bailleur (Firebase Storage)
+  final List<String>? documentsUrls;
 
   // Critères de logement (Étape 2 — uniquement pour étudiants)
   final double budgetMaxFCFA;
@@ -98,7 +80,8 @@ class UserModel {
   // Infos logement (uniquement si aDejaUnLogement == true)
   final String? logementQuartier; // Quartier/Zone du logement actuel
   final double? logementLoyerTotal; // Loyer mensuel total
-  final double? logementPartColoc; // Part du loyer demandée au futur colocataire
+  final double?
+  logementPartColoc; // Part du loyer demandée au futur colocataire
   final String? logementDescription; // Description rapide du logement
 
   // Photos du logement (Firebase Storage URLs, uniquement si aDejaUnLogement == true)
@@ -130,6 +113,7 @@ class UserModel {
     this.filiere,
     this.biographie,
     this.justificatifUrl,
+    this.documentsUrls,
     required this.budgetMaxFCFA,
     required this.quartierCible,
     required this.statutLogement,
@@ -177,6 +161,7 @@ class UserModel {
       'filiere': filiere,
       'biographie': biographie,
       'justificatifUrl': justificatifUrl,
+      'documentsUrls': documentsUrls,
       'budgetMaxFCFA': budgetMaxFCFA,
       'quartierCible': quartierCible,
       'statutLogement': statutLogement.name,
@@ -203,7 +188,9 @@ class UserModel {
       'logementPhotos': logementPhotos,
       'habitudesQuotidiennes': habitudesQuotidiennes,
       'genreColocataireRecherche': genreColocataireRecherche,
-      'dateNaissance': dateNaissance != null ? Timestamp.fromDate(dateNaissance!) : null,
+      'dateNaissance': dateNaissance != null
+          ? Timestamp.fromDate(dateNaissance!)
+          : null,
       'age': age,
       'dateInscription': Timestamp.fromDate(dateInscription),
     };
@@ -245,6 +232,7 @@ class UserModel {
       filiere: data['filiere'] as String?,
       biographie: data['biographie'] as String?,
       justificatifUrl: data['justificatifUrl'] as String?,
+      documentsUrls: safeStringList(data['documentsUrls']),
       budgetMaxFCFA: (data['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
       quartierCible: safeStringList(data['quartierCible']),
       statutLogement: StatutLogement.values.firstWhere(
@@ -313,6 +301,7 @@ class UserModel {
     String? filiere,
     String? biographie,
     String? justificatifUrl,
+    List<String>? documentsUrls,
     double? budgetMaxFCFA,
     List<String>? quartierCible,
     StatutLogement? statutLogement,
@@ -356,6 +345,7 @@ class UserModel {
       filiere: filiere ?? this.filiere,
       biographie: biographie ?? this.biographie,
       justificatifUrl: justificatifUrl ?? this.justificatifUrl,
+      documentsUrls: documentsUrls ?? this.documentsUrls,
       budgetMaxFCFA: budgetMaxFCFA ?? this.budgetMaxFCFA,
       quartierCible: quartierCible ?? this.quartierCible,
       statutLogement: statutLogement ?? this.statutLogement,
@@ -380,8 +370,10 @@ class UserModel {
       logementPartColoc: logementPartColoc ?? this.logementPartColoc,
       logementDescription: logementDescription ?? this.logementDescription,
       logementPhotos: logementPhotos ?? this.logementPhotos,
-      habitudesQuotidiennes: habitudesQuotidiennes ?? this.habitudesQuotidiennes,
-      genreColocataireRecherche: genreColocataireRecherche ?? this.genreColocataireRecherche,
+      habitudesQuotidiennes:
+          habitudesQuotidiennes ?? this.habitudesQuotidiennes,
+      genreColocataireRecherche:
+          genreColocataireRecherche ?? this.genreColocataireRecherche,
       dateNaissance: dateNaissance ?? this.dateNaissance,
       age: age ?? this.age,
       dateInscription: dateInscription ?? this.dateInscription,

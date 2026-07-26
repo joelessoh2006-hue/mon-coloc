@@ -4,10 +4,11 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:mon_coloc/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 
 class RegisterStep1Screen extends StatefulWidget {
-  final void Function({
+  final Future<void> Function({
     required String nom,
     required String prenom,
     required String email,
@@ -16,7 +17,8 @@ class RegisterStep1Screen extends StatefulWidget {
     required String ecoleUniversite,
     required DateTime? dateNaissance,
     required int? age,
-  }) onSuivant;
+  })
+  onSuivant;
 
   const RegisterStep1Screen({super.key, required this.onSuivant});
 
@@ -76,7 +78,8 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
 
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dateNaissance ?? DateTime(now.year - 18, now.month, now.day),
+      initialDate:
+          _dateNaissance ?? DateTime(now.year - 18, now.month, now.day),
       firstDate: dateMin,
       lastDate: dateMax,
       helpText: 'Sélectionnez votre date de naissance',
@@ -109,7 +112,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
     return DateFormat('dd/MM/yyyy').format(date);
   }
 
-  void _soumettre() {
+  Future<void> _soumettre() async {
     if (!_cleForm.currentState!.validate()) return;
     if (_ecoleChoisie == null) {
       _afficherErreur('Veuillez sélectionner votre école ou université.');
@@ -130,7 +133,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
       return;
     }
 
-    widget.onSuivant(
+    await widget.onSuivant(
       nom: _nomCtrl.text.trim(),
       prenom: _prenomCtrl.text.trim(),
       email: _emailCtrl.text.trim(),
@@ -207,8 +210,9 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                     if (val == null || val.trim().isEmpty) {
                       return 'Veuillez entrer votre adresse email';
                     }
-                    if (!RegExp(r'^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$')
-                        .hasMatch(val.trim())) {
+                    if (!RegExp(
+                      r'^[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}$',
+                    ).hasMatch(val.trim())) {
                       return 'Adresse email invalide';
                     }
                     return null;
@@ -299,9 +303,14 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                 // Affichage de l'âge calculé si la date est sélectionnée
                 if (_ageCalcule != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                      color: theme.colorScheme.primaryContainer.withOpacity(
+                        0.3,
+                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Row(
@@ -336,12 +345,9 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
                     theme: theme,
                   ),
                   items: _listeEcoles
-                      .map(
-                        (e) => DropdownMenuItem(value: e, child: Text(e)),
-                      )
+                      .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                       .toList(),
-                  onChanged: (val) =>
-                      setState(() => _ecoleChoisie = val),
+                  onChanged: (val) => setState(() => _ecoleChoisie = val),
                   validator: (val) =>
                       val == null ? 'Veuillez sélectionner votre école' : null,
                 ),

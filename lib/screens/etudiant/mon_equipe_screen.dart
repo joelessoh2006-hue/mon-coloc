@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/chat_screen.dart';
+import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 import 'package:mon_coloc/services/equipe_service.dart';
 
@@ -52,8 +53,8 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
   }
 
   /// Récupère les infos de plusieurs utilisateurs en une fois (avec cache).
-  Future<Map<String, Map<String, dynamic>?>> _recupererInfosMultiplesUtilisateurs(
-      List<String> uids) async {
+  Future<Map<String, Map<String, dynamic>?>>
+  _recupererInfosMultiplesUtilisateurs(List<String> uids) async {
     final result = <String, Map<String, dynamic>?>{};
     final uidsToFetch = <String>[];
 
@@ -114,8 +115,11 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.error_outline_rounded,
-                      size: 64, color: Colors.red.shade300),
+                  Icon(
+                    Icons.error_outline_rounded,
+                    size: 64,
+                    color: Colors.red.shade300,
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'Erreur de chargement : ${snapshot.error}',
@@ -131,14 +135,13 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
         final conversationsBrutes = snapshot.data?.docs ?? [];
 
         // Séparer les conversations acceptées (binôme validé) des autres
-        final conversationAcceptee = conversationsBrutes.cast<QueryDocumentSnapshot?>().firstWhere(
-          (doc) {
-            if (doc == null) return false;
-            final data = doc.data() as Map<String, dynamic>;
-            return data['demandeStatut'] == 'accepte';
-          },
-          orElse: () => null,
-        );
+        final conversationAcceptee = conversationsBrutes
+            .cast<QueryDocumentSnapshot?>()
+            .firstWhere((doc) {
+              if (doc == null) return false;
+              final data = doc.data() as Map<String, dynamic>;
+              return data['demandeStatut'] == 'accepte';
+            }, orElse: () => null);
 
         // Filtrer les demandes reçues en attente (proposées PAR un autre étudiant)
         final demandesRecues = conversationsBrutes.where((doc) {
@@ -203,17 +206,15 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                   : 'Ces étudiants veulent former une équipe avec vous',
             ),
             const SizedBox(height: 8),
-            ...demandesRecues.map((doc) => _buildDemandeRecueCard(
-                  currentUser,
-                  doc,
-                )),
+            ...demandesRecues.map(
+              (doc) => _buildDemandeRecueCard(currentUser, doc),
+            ),
           ],
 
           // ================================================================
           // ÉTAT SANS BINÔME ET SANS DEMANDE
           // ================================================================
-          if (!aBinome && demandesRecues.isEmpty)
-            _buildEmptyState(),
+          if (!aBinome && demandesRecues.isEmpty) _buildEmptyState(),
         ],
       ),
     );
@@ -306,10 +307,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             // Bannière de confirmation
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 20,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [Color(0xFFE8F5E9), Color(0xFFC8E6C9)],
@@ -323,10 +321,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
               ),
               child: Column(
                 children: [
-                  const Text(
-                    '🎉',
-                    style: TextStyle(fontSize: 48),
-                  ),
+                  const Text('🎉', style: TextStyle(fontSize: 48)),
                   const SizedBox(height: 12),
                   Text(
                     autresMembres.length == 1
@@ -357,7 +352,11 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             // Section : Membres de l'équipe
             Row(
               children: [
-                const Icon(Icons.group_rounded, size: 20, color: Color(0xFF1E3A5F)),
+                const Icon(
+                  Icons.group_rounded,
+                  size: 20,
+                  color: Color(0xFF1E3A5F),
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Mon Équipe (${membres.length})',
@@ -380,14 +379,16 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             const SizedBox(height: 8),
 
             // Cartes des autres membres
-            ...autresMembres.map((uid) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _buildMembreCard(
-                    uid: uid,
-                    infos: infosMap[uid],
-                    estMoi: false,
-                  ),
-                )),
+            ...autresMembres.map(
+              (uid) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildMembreCard(
+                  uid: uid,
+                  infos: infosMap[uid],
+                  estMoi: false,
+                ),
+              ),
+            ),
 
             const SizedBox(height: 20),
 
@@ -430,10 +431,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                 autresMembres.length == 1
                     ? 'Discutez avec votre colocataire officiel'
                     : 'Discutez avec les membres de votre équipe',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
               ),
             ),
           ],
@@ -471,10 +469,10 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             // Avatar
             CircleAvatar(
               radius: 28,
-              backgroundColor:
-                  Theme.of(context).colorScheme.primary.withOpacity(0.15),
-              backgroundImage:
-                  photoUrl != null ? NetworkImage(photoUrl) : null,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withOpacity(0.15),
+              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
               child: photoUrl == null
                   ? Text(
                       prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
@@ -529,8 +527,11 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(Icons.school_rounded,
-                            size: 14, color: Colors.grey[500]),
+                        Icon(
+                          Icons.school_rounded,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
                         const SizedBox(width: 4),
                         Flexible(
                           child: Text(
@@ -549,10 +550,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                     const SizedBox(height: 2),
                     Text(
                       filiere,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                     ),
                   ],
                 ],
@@ -610,10 +608,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             padding: const EdgeInsets.only(left: 38),
             child: Text(
               subtitle,
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey[500],
-              ),
+              style: TextStyle(fontSize: 12, color: Colors.grey[500]),
             ),
           ),
         ],
@@ -630,7 +625,11 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.person_search_rounded, size: 80, color: Colors.grey[300]),
+            Icon(
+              Icons.person_search_rounded,
+              size: 80,
+              color: Colors.grey[300],
+            ),
             const SizedBox(height: 24),
             const Text(
               'Vous n\'avez pas encore de binôme.',
@@ -666,10 +665,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
   // ---------------------------------------------------------------------------
 
   /// Construit une carte pour une demande de colocation reçue.
-  Widget _buildDemandeRecueCard(
-    User currentUser,
-    QueryDocumentSnapshot doc,
-  ) {
+  Widget _buildDemandeRecueCard(User currentUser, QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final conversationId = doc.id;
     final proposePar = data['proposePar'] as String? ?? '';
@@ -683,6 +679,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
         final nom = infos?['nom'] as String? ?? '';
         final photoUrl = infos?['photoUrl'] as String?;
         final ecole = infos?['ecoleUniversite'] as String? ?? '';
+        final estVerifie = infos?['estVerifie'] as bool? ?? false;
 
         return Card(
           margin: const EdgeInsets.only(bottom: 12),
@@ -693,88 +690,123 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
               color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
             ),
           ),
-          child: InkWell(
-            onTap: () => _ouvrirChat(conversationId, proposePar),
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  // Avatar
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                    backgroundImage:
-                        photoUrl != null ? NetworkImage(photoUrl) : null,
-                    child: photoUrl == null
-                        ? Text(
-                            prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  // Infos
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$prenom $nom',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF1E3A5F),
-                          ),
-                        ),
-                        if (ecole.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            ecole,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF3E0),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            'Demande en attente',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFFE65100),
-                            ),
-                          ),
-                        ),
-                      ],
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    // Avatar
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.15),
+                      backgroundImage: photoUrl != null
+                          ? NetworkImage(photoUrl)
+                          : null,
+                      child: photoUrl == null
+                          ? Text(
+                              prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            )
+                          : null,
                     ),
-                  ),
-                  // Flèche
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.grey[400],
-                  ),
-                ],
-              ),
+                    const SizedBox(width: 14),
+                    // Infos
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '$prenom $nom',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E3A5F),
+                            ),
+                          ),
+                          if (ecole.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              ecole,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 4),
+                          // Badge de statut de vérification
+                          _buildVerificationBadge(estVerifie),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _voirProfil(infos!),
+                        icon: const Icon(Icons.person_search_rounded, size: 18),
+                        label: const Text('Voir le profil'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () =>
+                            _ouvrirChat(conversationId, proposePar),
+                        icon: const Icon(Icons.chat_rounded, size: 18),
+                        label: const Text('Répondre'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildVerificationBadge(bool estVerifie) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: estVerifie
+            ? Colors.green.withOpacity(0.1)
+            : Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            estVerifie ? Icons.verified_rounded : Icons.hourglass_top_rounded,
+            size: 12,
+            color: estVerifie ? Colors.green.shade700 : Colors.orange.shade700,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            estVerifie ? 'Profil vérifié' : 'Non vérifié',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: estVerifie
+                  ? Colors.green.shade700
+                  : Colors.orange.shade700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -790,6 +822,25 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
           conversationId: conversationId,
           destinataireId: destinataireId,
         ),
+      ),
+    );
+  }
+
+  /// Ouvre l'écran de détail du profil.
+  void _voirProfil(Map<String, dynamic> userData) {
+    // On s'assure que l'UID est bien dans les données pour la navigation
+    if (!userData.containsKey('uid')) {
+      final entry = _cacheInfos.entries.firstWhere(
+        (e) => e.value == userData,
+        orElse: () => const MapEntry('', null),
+      );
+      if (entry.key.isNotEmpty) {
+        userData['uid'] = entry.key;
+      }
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ProfileDetailScreen(userData: userData),
       ),
     );
   }

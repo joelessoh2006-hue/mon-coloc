@@ -74,6 +74,21 @@ class AdminService {
         .get();
   }
 
+  /// Récupère en temps réel TOUS les bailleurs (pour la gestion).
+  /// Le tri est effectué côté client pour plus de flexibilité.
+  Stream<QuerySnapshot> ecouterTousLesBailleurs() {
+    return _usersCollection.where('role', isEqualTo: 'bailleur').snapshots();
+  }
+
+  /// Récupère en temps réel les comptes bailleurs non vérifiés ET non bloqués.
+  Stream<QuerySnapshot> ecouterBailleursEnAttenteDeValidation() {
+    return _usersCollection
+        .where('role', isEqualTo: 'bailleur')
+        .where('estVerifie', isEqualTo: false)
+        .where('estBloque', isEqualTo: false)
+        .snapshots();
+  }
+
   /// Approuve un compte bailleur (status -> valide, estVerifie -> true).
   Future<void> approuverBailleur(String bailleurUid) async {
     await _usersCollection.doc(bailleurUid).update({
@@ -121,12 +136,28 @@ class AdminService {
         .get();
   }
 
+  /// Récupère en temps réel les étudiants non vérifiés ET non bloqués.
+  Stream<QuerySnapshot> ecouterEtudiantsEnAttenteDeValidation() {
+    return _usersCollection
+        .where('role', isEqualTo: 'etudiant')
+        .where('estVerifie', isEqualTo: false)
+        .where('estBloque', isEqualTo: false)
+        .snapshots();
+  }
+
   /// Récupère en temps réel TOUS les étudiants (pour la gestion).
   /// Le tri est effectué côté client pour plus de flexibilité.
   Stream<QuerySnapshot> ecouterTousLesEtudiants() {
     return _usersCollection.where('role', isEqualTo: 'etudiant').snapshots();
   }
 
+  /// Récupère en temps réel les étudiants non bloqués.
+  Stream<QuerySnapshot> ecouterEtudiantsNonBloques() {
+    return _usersCollection
+        .where('role', isEqualTo: 'etudiant')
+        .where('estBloque', isEqualTo: false)
+        .snapshots();
+  }
   /// Marque un étudiant comme vérifié (estVerifie: true).
   Future<void> verifierEtudiant(String uid) async {
     await _usersCollection.doc(uid).update({
@@ -188,6 +219,12 @@ class AdminService {
     }, SetOptions(merge: true));
   }
 
+  /// Récupère en temps réel tous les comptes (étudiants et bailleurs) bloqués.
+  Stream<QuerySnapshot> ecouterComptesBloques() {
+    return _usersCollection
+        .where('estBloque', isEqualTo: true)
+        .snapshots();
+  }
   /// Vérifie si un utilisateur est bloqué.
   Future<bool> estCompteBloque(String uid) async {
     final doc = await _usersCollection.doc(uid).get();

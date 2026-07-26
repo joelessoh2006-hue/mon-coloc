@@ -222,6 +222,7 @@ class _LogementDetailScreenState extends State<LogementDetailScreen> {
         ? 'Caution : $cautionMois mois'
         : 'Caution : $cautionMois mois';
 
+
     return Scaffold(
       body: SafeArea(
         child: Column(

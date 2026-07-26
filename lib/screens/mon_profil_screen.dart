@@ -178,14 +178,17 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     } catch (e) {
       debugPrint('Erreur téléversement photo: $e');
       if (mounted) {
-        setState(() {
-          _televersementEnCours = false;
-          _messageTeleversement = null;
-        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erreur: $e')),
         );
       }
+    }
+    // Le `finally` est déplacé ici pour s'exécuter après le try/catch
+    if (mounted) {
+      setState(() {
+        _televersementEnCours = false;
+        _messageTeleversement = null;
+      });
     }
   }
 

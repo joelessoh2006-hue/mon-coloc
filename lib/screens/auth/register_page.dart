@@ -10,6 +10,7 @@ import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_step1_screen.dart';
 import 'package:mon_coloc/screens/auth/register_step2_screen.dart';
 import 'package:mon_coloc/screens/auth/register_step3_screen.dart';
+import 'package:mon_coloc/screens/home_screen.dart';
 
 class RegisterPage extends StatefulWidget {
   /// Rôle de l'utilisateur : 'etudiant' uniquement ici (bailleur a son propre écran)
@@ -94,7 +95,7 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   // Étape 1 → Stocke les infos et va à l'étape 2
-  void _surEtape1({
+  Future<void> _surEtape1({
     required String nom,
     required String prenom,
     required String email,
@@ -103,7 +104,7 @@ class _RegisterPageState extends State<RegisterPage> {
     required String ecoleUniversite,
     required DateTime? dateNaissance,
     required int? age,
-  }) {
+  }) async {
     setState(() {
       _nom = nom;
       _prenom = prenom;
@@ -188,7 +189,8 @@ class _RegisterPageState extends State<RegisterPage> {
       final firebaseUser = cred.user;
       if (firebaseUser == null) {
         throw Exception(
-            "L'utilisateur Firebase est null après la création du compte.");
+          "L'utilisateur Firebase est null après la création du compte.",
+        );
       }
 
       final aDejaUnLogement = _statutLogement == StatutLogement.aDejaUnLogement;
@@ -227,12 +229,16 @@ class _RegisterPageState extends State<RegisterPage> {
         age: _age,
       );
 
+      // 2. Sauvegarde des données dans Firestore
       await _userService.sauvegarderUtilisateur(user);
 
-      if (!mounted) return;
-
-      // Succès → retour à l'appelant
-      widget.onInscriptionTerminee();
+      // 3. Redirection directe vers l'écran d'accueil en cas de SUCCÈS
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (Route<dynamic> route) => false,
+        );
+      }
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       setState(() => _enChargement = false);
@@ -301,8 +307,7 @@ class _RegisterPageState extends State<RegisterPage> {
               child: PageView(
                 controller: _pageController,
                 physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (page) =>
-                    setState(() => _pageCourante = page),
+                onPageChanged: (page) => setState(() => _pageCourante = page),
                 children: [
                   // Étape 1 : RegisterStep1Screen (sans sélection de rôle)
                   RegisterStep1Screen(onSuivant: _surEtape1),
