@@ -13,6 +13,7 @@ import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_equipe_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_logement_screen.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
+import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 
 /// Écran d'accueil principal.
@@ -159,6 +160,18 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Déconnecte l'utilisateur
   Future<void> _deconnexion() async {
     await _auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+          builder: (context) => LoginScreen(
+            onConnexionReussie: () {
+              // Callback appelé si l'utilisateur se re-connecte
+            },
+          ),
+        ),
+        (route) => false,
+      );
+    }
   }
 
   @override

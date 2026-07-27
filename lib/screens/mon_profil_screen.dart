@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
+import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
 /// Écran "Mon Profil" complet avec sections en accordéon.
@@ -324,6 +325,18 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // ---------------------------------------------------------------------------
   Future<void> _deconnexion() async {
     await _auth.signOut();
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+          builder: (context) => LoginScreen(
+            onConnexionReussie: () {
+              // Callback appelé si l'utilisateur se re-connecte
+            },
+          ),
+        ),
+        (route) => false,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -481,24 +494,24 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
             color: user.role == 'etudiant'
                 ? Colors.blue.withOpacity(0.1) // Étudiant
                 : user.role == 'bailleur'
-                    ? Colors.orange.withOpacity(0.1) // Bailleur
-                    : Colors.red.withOpacity(0.1), // Administrateur
+                ? Colors.orange.withOpacity(0.1) // Bailleur
+                : Colors.red.withOpacity(0.1), // Administrateur
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
             user.role == 'etudiant'
                 ? 'Étudiant'
                 : user.role == 'bailleur'
-                    ? 'Bailleur'
-                    : 'Administrateur', // Texte pour l'administrateur
+                ? 'Bailleur'
+                : 'Administrateur', // Texte pour l'administrateur
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: user.role == 'etudiant'
                   ? Colors.blue.shade700
                   : user.role == 'bailleur'
-                      ? Colors.orange.shade700
-                      : Colors.red.shade700, // Couleur pour l'administrateur
+                  ? Colors.orange.shade700
+                  : Colors.red.shade700, // Couleur pour l'administrateur
             ),
           ),
         ),

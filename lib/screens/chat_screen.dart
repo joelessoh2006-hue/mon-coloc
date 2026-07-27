@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
+import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
 
 /// Écran de chat en temps réel entre deux utilisateurs.
 ///
@@ -359,20 +360,36 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Row(
           children: [
             // Avatar du destinataire
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-              backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-              child: photoUrl == null
-                  ? Text(
-                      prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary,
-                      ),
-                    )
-                  : null,
+            GestureDetector(
+              onTap: () {
+                if (widget.estModeAdmin || _destinataireInfos == null) return;
+                // On s'assure que l'UID est présent pour la navigation
+                if (!_destinataireInfos!.containsKey('uid')) {
+                  _destinataireInfos!['uid'] = widget.destinataireId;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ProfileDetailScreen(userData: _destinataireInfos!),
+                  ),
+                );
+              },
+              child: CircleAvatar(
+                radius: 18,
+                backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                backgroundImage:
+                    photoUrl != null ? NetworkImage(photoUrl) : null,
+                child: photoUrl == null
+                    ? Text(
+                        prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      )
+                    : null,
+              ),
             ),
             const SizedBox(width: 12),
             // Nom du destinataire
