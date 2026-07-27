@@ -411,6 +411,9 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           // Menu déroulant pour signaler l'utilisateur
           PopupMenuButton<String>(
+            // Masquer le bouton si on est en mode admin
+            enabled: !widget.estModeAdmin,
+            icon: widget.estModeAdmin ? const SizedBox.shrink() : const Icon(Icons.more_vert),
             onSelected: (value) {
               if (value == 'report') {
                 _ouvrirDialogSignalement();
@@ -522,6 +525,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Construit la bannière d'état de la demande d'équipe.
   Widget _buildColocationBanner() {
+    // Si on est en mode admin, on ne montre jamais les bannières interactives.
+    if (widget.estModeAdmin) return const SizedBox.shrink();
+
     final currentUser = _auth.currentUser;
     if (currentUser == null) return const SizedBox.shrink();
 
