@@ -41,23 +41,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '🛡️ Panel Admin',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: theme.colorScheme.errorContainer,
-        foregroundColor: theme.colorScheme.onErrorContainer,
-        bottom: TabBar(
+    return Column(
+      children: [
+        TabBar(
           controller: _tabController,
           indicatorColor: theme.colorScheme.error,
           labelColor: theme.colorScheme.onErrorContainer,
-          unselectedLabelColor: theme.colorScheme.onErrorContainer.withOpacity(
-            0.6,
-          ),
+          unselectedLabelColor:
+              theme.colorScheme.onErrorContainer.withOpacity(0.6),
           isScrollable: true,
           tabs: [
             _buildTabWithBadge(
@@ -84,17 +75,19 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             ),
           ],
         ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildLogementsTab(),
-          _buildBailleursTab(),
-          _buildEtudiantsTab(),
-          _buildComptesBloquesTab(),
-          _buildSignalementsTab(),
-        ],
-      ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildLogementsTab(),
+              _buildBailleursTab(),
+              _buildEtudiantsTab(),
+              _buildComptesBloquesTab(),
+              _buildSignalementsTab(),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

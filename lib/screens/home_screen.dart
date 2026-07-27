@@ -477,12 +477,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // ---------------------------------------------------------------------------
   // INTERFACE ADMIN
   // ---------------------------------------------------------------------------
-  Widget _construireDashboardAdmin() {
+  Widget _construireDashboardAdmin() {    
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
+        automaticallyImplyLeading: false, // Pour ne pas avoir de bouton retour
+        title: const Text( 
           '🛡️ Espace Admin',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
@@ -503,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Se déconnecter',
-            onPressed: _deconnexion,
+            onPressed: _deconnexion, // Appelle _auth.signOut()
           ),
         ],
       ),

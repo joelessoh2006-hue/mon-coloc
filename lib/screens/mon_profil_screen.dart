@@ -178,9 +178,9 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     } catch (e) {
       debugPrint('Erreur téléversement photo: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
       }
     }
     // Le `finally` est déplacé ici pour s'exécuter après le try/catch
@@ -258,9 +258,9 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
           _televersementEnCours = false;
           _messageTeleversement = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
       }
     }
   }
@@ -332,9 +332,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   @override
   Widget build(BuildContext context) {
     if (_chargement) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final user = _utilisateur;
@@ -370,8 +368,10 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                   ],
 
                   // --- SECTION 3 : Sécurité & Justificatifs ---
-                  _buildSectionSecurite(user),
-                  const SizedBox(height: 16),
+                  if (user.role != 'admin') ...[
+                    _buildSectionSecurite(user),
+                    const SizedBox(height: 16),
+                  ],
 
                   // --- SECTION 4 : Actions ---
                   _buildSectionActions(),
@@ -419,8 +419,8 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     final initiale = user.prenom.isNotEmpty
         ? user.prenom[0].toUpperCase()
         : user.nom.isNotEmpty
-            ? user.nom[0].toUpperCase()
-            : '?';
+        ? user.nom[0].toUpperCase()
+        : '?';
 
     return Column(
       children: [
@@ -431,8 +431,9 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
             CircleAvatar(
               radius: 60,
               backgroundColor: theme.colorScheme.primaryContainer,
-              backgroundImage:
-                  user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
+              backgroundImage: user.photoUrl != null
+                  ? NetworkImage(user.photoUrl!)
+                  : null,
               child: user.photoUrl == null
                   ? Text(
                       initiale,
@@ -478,17 +479,26 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             color: user.role == 'etudiant'
-                ? Colors.blue.withOpacity(0.1)
-                : Colors.orange.withOpacity(0.1),
+                ? Colors.blue.withOpacity(0.1) // Étudiant
+                : user.role == 'bailleur'
+                    ? Colors.orange.withOpacity(0.1) // Bailleur
+                    : Colors.red.withOpacity(0.1), // Administrateur
             borderRadius: BorderRadius.circular(20),
           ),
           child: Text(
-            user.role == 'etudiant' ? 'Étudiant' : 'Bailleur',
+            user.role == 'etudiant'
+                ? 'Étudiant'
+                : user.role == 'bailleur'
+                    ? 'Bailleur'
+                    : 'Administrateur', // Texte pour l'administrateur
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color:
-                  user.role == 'etudiant' ? Colors.blue.shade700 : Colors.orange.shade700,
+              color: user.role == 'etudiant'
+                  ? Colors.blue.shade700
+                  : user.role == 'bailleur'
+                      ? Colors.orange.shade700
+                      : Colors.red.shade700, // Couleur pour l'administrateur
             ),
           ),
         ),
@@ -537,20 +547,22 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
           ),
           const SizedBox(height: 12),
 
-          // École / Université
-          _champTexte(
-            controller: _ecoleController,
-            label: 'École / Université',
-            icon: Icons.school_rounded,
-          ),
-          const SizedBox(height: 12),
+          // École / Université & Filière (masqué pour admin)
+          if (user.role != 'admin') ...[
+            _champTexte(
+              controller: _ecoleController,
+              label: 'École / Université',
+              icon: Icons.school_rounded,
+            ),
+            const SizedBox(height: 12),
 
-          // Filière
-          _champTexte(
-            controller: _filiereController,
-            label: "Filière d'études",
-            icon: Icons.menu_book_rounded,
-          ),
+            // Filière
+            _champTexte(
+              controller: _filiereController,
+              label: "Filière d'études",
+              icon: Icons.menu_book_rounded,
+            ),
+          ],
           const SizedBox(height: 12),
 
           // Biographie
@@ -627,7 +639,10 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
             ),
             items: const [
               DropdownMenuItem(value: null, child: Text('— Non spécifié —')),
-              DropdownMenuItem(value: 'Appartement', child: Text('Appartement')),
+              DropdownMenuItem(
+                value: 'Appartement',
+                child: Text('Appartement'),
+              ),
               DropdownMenuItem(value: 'Studio', child: Text('Studio')),
               DropdownMenuItem(value: 'Chambre', child: Text('Chambre')),
               DropdownMenuItem(value: 'Villa', child: Text('Villa')),
@@ -695,14 +710,8 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                 value: Proprete.tresPropre,
                 child: Text('Très propre'),
               ),
-              DropdownMenuItem(
-                value: Proprete.propre,
-                child: Text('Propre'),
-              ),
-              DropdownMenuItem(
-                value: Proprete.moyen,
-                child: Text('Moyen'),
-              ),
+              DropdownMenuItem(value: Proprete.propre, child: Text('Propre')),
+              DropdownMenuItem(value: Proprete.moyen, child: Text('Moyen')),
             ],
             onChanged: (val) {
               if (val != null) {
@@ -759,10 +768,12 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                           '$niveau',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight:
-                                isSelected ? FontWeight.bold : FontWeight.normal,
-                            color:
-                                isSelected ? Colors.teal.shade800 : Colors.grey,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                            color: isSelected
+                                ? Colors.teal.shade800
+                                : Colors.grey,
                           ),
                         ),
                       ),
@@ -776,8 +787,8 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                   _niveauSociabilite <= 2
                       ? 'Plutôt réservé'
                       : _niveauSociabilite >= 4
-                          ? 'Très sociable'
-                          : 'Sociable',
+                      ? 'Très sociable'
+                      : 'Sociable',
                   style: TextStyle(
                     fontSize: 12,
                     color: Colors.grey.shade600,
@@ -841,18 +852,25 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user.estVerifie ? 'Profil vérifié' : 'En attente de vérification',
+                      user.estVerifie
+                          ? 'Profil vérifié'
+                          : 'En attente de vérification',
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: user.estVerifie ? Colors.green.shade700 : Colors.orange.shade700,
+                        color: user.estVerifie
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
                       ),
                     ),
                     Text(
                       user.estVerifie
                           ? 'Votre identité a été confirmée.'
                           : 'Téléversez vos justificatifs pour être vérifié.',
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ],
                 ),
@@ -872,12 +890,18 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                   children: [
                     const Text(
                       'Documents justificatifs',
-                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'En tant que $roleLabel : $descriptionJustificatif',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ],
                 ),
@@ -896,12 +920,19 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green.shade600, size: 20),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.green.shade600,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
                       'Justificatif téléversé',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -916,9 +947,11 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
             child: OutlinedButton.icon(
               onPressed: _choisirJustificatif,
               icon: const Icon(Icons.upload_file_rounded),
-              label: Text(user.justificatifUrl != null
-                  ? 'Remplacer le justificatif'
-                  : 'Téléverser un justificatif'),
+              label: Text(
+                user.justificatifUrl != null
+                    ? 'Remplacer le justificatif'
+                    : 'Téléverser un justificatif',
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: theme.colorScheme.primary,
                 side: BorderSide(color: theme.colorScheme.primary),
@@ -978,8 +1011,9 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed:
-                _sauvegardeEnCours || _televersementEnCours ? null : _sauvegarder,
+            onPressed: _sauvegardeEnCours || _televersementEnCours
+                ? null
+                : _sauvegarder,
             icon: _sauvegardeEnCours
                 ? const SizedBox(
                     width: 20,
@@ -991,8 +1025,8 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
               _sauvegardeEnCours
                   ? 'Sauvegarde en cours…'
                   : _modificationsEffectuees
-                      ? 'Enregistrer les modifications'
-                      : 'Sauvegarder le profil',
+                  ? 'Enregistrer les modifications'
+                  : 'Sauvegarder le profil',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             style: FilledButton.styleFrom(
@@ -1045,9 +1079,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
       ),
       keyboardType: typeClavier ?? TextInputType.text,
       textCapitalization: TextCapitalization.words,
