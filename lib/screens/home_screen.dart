@@ -112,12 +112,28 @@ class _HomeScreenState extends State<HomeScreen> {
     if (uid == null) return;
 
     _firestore.collection('users').doc(uid).snapshots().listen((doc) {
-      if (!mounted || !doc.exists) return;
+      if (!mounted) return;
+
+      // Si le document utilisateur n'existe plus ou si le compte est bloqué,
+      // on déconnecte l'utilisateur de force.
+      if (!doc.exists) {
+        _deconnexionForcee("Votre compte utilisateur n'existe plus.");
+        return;
+      }
+
       final data = doc.data() as Map<String, dynamic>;
+      final estBloque = data['estBloque'] as bool? ?? false;
+      final status = data['status'] as String?;
+
+      if (estBloque || status == 'bloque') {
+        _deconnexionForcee("Votre compte a été bloqué par un administrateur.");
+        return; // Arrêter le traitement pour éviter des erreurs de setState
+      }
+
       final aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
       final shouldUpdateUser =
           _currentUser == null ||
-          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
+          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) || //
           _currentUser!.justificatifUrl != (data['justificatifUrl'] as String?);
 
       if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser) {
@@ -173,6 +189,30 @@ class _HomeScreenState extends State<HomeScreen> {
         (route) => false,
       );
     }
+  }
+
+  /// Déconnecte l'utilisateur de force et affiche un message.
+  Future<void> _deconnexionForcee(String message) async {
+    // On s'assure que l'opération ne se fait qu'une fois si le listener se déclenche rapidement
+    if (!mounted) return;
+
+    // Afficher le message d'avertissement
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+
+    // Déconnecter l'utilisateur
+    await _auth.signOut();
+
+    // Rediriger vers l'écran de connexion
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => LoginScreen(onConnexionReussie: () {})),
+      (route) => false,
+    );
   }
 
   @override

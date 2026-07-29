@@ -158,6 +158,7 @@ class AdminService {
         .where('estBloque', isEqualTo: false)
         .snapshots();
   }
+
   /// Marque un étudiant comme vérifié (estVerifie: true).
   Future<void> verifierEtudiant(String uid) async {
     await _usersCollection.doc(uid).update({
@@ -201,30 +202,51 @@ class AdminService {
   // BLOCAGE / DÉBLOCAGE DE COMPTES
   // ===========================================================================
 
-  /// Bloque un utilisateur en passant estBloque à true.
-  /// Utilise set() avec merge pour créer le document s'il n'existe pas.
+  /// Bloque un bailleur et suspend tous ses logements de manière atomique.
+  /// 1. Met à jour le document du bailleur dans `users` :
+  ///    - `estBloque`: true
+  ///    - `estVerifie`: false
+  ///    - `status`: 'bloque'
+  /// 2. Met à jour tous ses logements dans `logements` :
+  ///    - `status`: 'suspendu'
   Future<void> bloquerCompte(String uid) async {
-    await _usersCollection.doc(uid).set({
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 1. Mettre à jour le document de l'utilisateur
+    final userRef = _usersCollection.doc(uid);
+    batch.update(userRef, {
       'estBloque': true,
+      'status': 'bloque',
       'dateBlocage': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    });
+
+    // 2. Suspendre tous les logements du bailleur
+    final logementsQuery = await _logementsCollection
+        .where('idBailleur', isEqualTo: uid)
+        .get();
+
+    for (final doc in logementsQuery.docs) {
+      batch.update(doc.reference, {'status': 'suspendu'});
+    }
+
+    // Exécuter l'opération atomique
+    await batch.commit();
   }
 
   /// Débloque un utilisateur en passant estBloque à false.
-  /// Utilise set() avec merge pour créer le document s'il n'existe pas.
   Future<void> debloquerCompte(String uid) async {
-    await _usersCollection.doc(uid).set({
+    await _usersCollection.doc(uid).update({
       'estBloque': false,
+      'status': 'valide',
       'dateBlocage': FieldValue.delete(),
-    }, SetOptions(merge: true));
+    });
   }
 
   /// Récupère en temps réel tous les comptes (étudiants et bailleurs) bloqués.
   Stream<QuerySnapshot> ecouterComptesBloques() {
-    return _usersCollection
-        .where('estBloque', isEqualTo: true)
-        .snapshots();
+    return _usersCollection.where('estBloque', isEqualTo: true).snapshots();
   }
+
   /// Vérifie si un utilisateur est bloqué.
   Future<bool> estCompteBloque(String uid) async {
     final doc = await _usersCollection.doc(uid).get();

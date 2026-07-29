@@ -48,7 +48,10 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
 
   /// Construit la requête Firestore en fonction des filtres sélectionnés.
   Stream<QuerySnapshot> _streamLogements() {
-    Query query = FirebaseFirestore.instance.collection('logements');
+    // On ne récupère que les logements qui ont été validés par un admin.
+    Query query = FirebaseFirestore.instance
+        .collection('logements')
+        .where('status', isEqualTo: 'valide');
 
     // Filtrer par commune si une commune est sélectionnée
     if (_communeChoisie != null) {
