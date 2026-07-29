@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
+import 'package:mon_coloc/screens/bailleur/attente_validation_screen.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
 import 'package:mon_coloc/screens/bailleur/bailleur_inbox_screen.dart';
 import 'package:mon_coloc/screens/bailleur/bailleur_visits_screen.dart';
@@ -452,13 +453,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 titre: 'Ajouter un nouveau logement',
                 description: 'Proposez un logement vérifié sur la plateforme',
                 couleur: theme.colorScheme.primary,
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const AddLogementScreen(),
-                    ),
-                  );
-                },
+                onPressed: () => _onAddLogementPressed(context),
               ),
             ),
             const SizedBox(height: 20),
@@ -585,5 +580,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  void _onAddLogementPressed(BuildContext context) {
+    // Vérifier si le bailleur est vérifié avant de le laisser publier
+    if (_currentUser?.estVerifie == true) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AddLogementScreen(),
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AttenteValidationScreen(),
+        ),
+      );
+    }
   }
 }
