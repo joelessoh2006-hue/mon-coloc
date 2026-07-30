@@ -189,33 +189,12 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
             const SizedBox(height: 8),
 
-            // --- Section Logement (si l'étudiant a déjà un logement) ---
-            if (_user.aDejaUnLogement) ...[
-              _buildSection(
-                theme: theme,
-                icon: Icons.home_rounded,
-                title: 'Son logement',
-                child: _buildLogementSection(theme),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            // --- Section Habitudes de vie ---
-            _buildSection(
-              theme: theme,
-              icon: Icons.auto_awesome_rounded,
-              title: 'Habitudes de vie',
-              child: _buildHabitsSection(theme),
-            ),
-
-            const SizedBox(height: 8),
-
-            // --- Section À propos ---
-            if (_user.biographie != null && _user.biographie!.isNotEmpty)
+            // --- Section "À propos" (commune à tous les rôles) ---
+            if (_user.biographie != null && _user.biographie!.isNotEmpty) ...[
               _buildSection(
                 theme: theme,
                 icon: Icons.person_outline_rounded,
-                title: 'À propos de moi',
+                title: 'À propos',
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -231,17 +210,43 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                   ),
                 ),
               ),
-
-            if (_user.biographie != null && _user.biographie!.isNotEmpty)
               const SizedBox(height: 8),
+            ],
 
-            // --- Section Critères de logement ---
-            _buildSection(
-              theme: theme,
-              icon: Icons.home_work_rounded,
-              title: 'Critères de logement recherché',
-              child: _buildLogementCriteria(theme),
-            ),
+            // --- Contenu spécifique au rôle ÉTUDIANT ---
+            if (_user.role == 'etudiant') ...[
+              if (_user.aDejaUnLogement) ...[
+                _buildSection(
+                  theme: theme,
+                  icon: Icons.home_rounded,
+                  title: 'Son logement',
+                  child: _buildLogementSection(theme),
+                ),
+                const SizedBox(height: 8),
+              ],
+              _buildSection(
+                theme: theme,
+                icon: Icons.auto_awesome_rounded,
+                title: 'Habitudes de vie',
+                child: _buildHabitsSection(theme),
+              ),
+              const SizedBox(height: 8),
+              _buildSection(
+                theme: theme,
+                icon: Icons.home_work_rounded,
+                title: 'Critères de logement recherché',
+                child: _buildLogementCriteria(theme),
+              ),
+            ],
+
+            // --- Contenu spécifique au rôle BAILLEUR ---
+            if (_user.role == 'bailleur')
+              _buildSection(
+                theme: theme,
+                icon: Icons.business_rounded,
+                title: 'Ses logements publiés',
+                child: _buildBailleurLogementsList(theme),
+              ),
 
             const SizedBox(height: 100), // Espace pour le bottom bar
           ],
@@ -974,6 +979,122 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION LOGEMENTS DU BAILLEUR
+  // ---------------------------------------------------------------------------
+  Widget _buildBailleurLogementsList(ThemeData theme) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('logements')
+          .where('idBailleur', isEqualTo: _user.uid)
+          .where('status', isEqualTo: 'valide')
+          .get(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(child: Text('Erreur de chargement des logements.')),
+          );
+        }
+
+        final logements = snapshot.data?.docs ?? [];
+
+        if (logements.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.home_work_outlined,
+                      size: 48, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Ce bailleur n\'a aucun logement publié pour le moment.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: logements.length,
+            itemBuilder: (context, index) {
+              final data = logements[index].data() as Map<String, dynamic>;
+              return _buildBailleurLogementCard(data, theme);
+            },
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBailleurLogementCard(Map<String, dynamic> data, ThemeData theme) {
+    final commune = data['commune'] as String? ?? 'N/A';
+    final quartier = data['quartier'] as String? ?? '';
+    final loyer = (data['loyer'] as num?)?.toDouble() ?? 0;
+    final nombrePieces = data['nombrePieces'] as int? ?? 0;
+    final typeLogement = nombrePieces <= 1 ? 'Studio' : 'Appartement';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              nombrePieces <= 1 ? Icons.home_rounded : Icons.apartment_rounded,
+              size: 28,
+              color: theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$typeLogement - $commune, $quartier',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 15),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_formatMontant(loyer)} FCFA / mois',
+                  style: TextStyle(color: theme.colorScheme.primary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
