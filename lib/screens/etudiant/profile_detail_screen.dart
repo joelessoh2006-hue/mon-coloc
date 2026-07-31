@@ -10,7 +10,7 @@ import 'package:mon_coloc/services/chat_service.dart';
 /// Écran de profil détaillé d'un étudiant.
 /// Accessible depuis l'onglet "Découvrir" en cliquant sur "Voir le profil".
 ///
-/// Si l'étudiant a déjà un logement (aDejaUnLogement == true),
+/// Si l'étudiant a déjà un logement (aDejaUnLogement == true), 
 /// affiche les informations du logement avec un carrousel de photos.
 class ProfileDetailScreen extends StatefulWidget {
   /// Données de l'étudiant ciblé (provenant du matching)

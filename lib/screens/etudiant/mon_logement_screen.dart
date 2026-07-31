@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/user_service.dart';
+import 'package:mon_coloc/screens/mon_profil_screen.dart';
 
 /// Écran "Mon Logement" pour les étudiants ayant déjà un logement.
 /// Permet de uploader des photos, voir/modifier les infos du logement.
@@ -33,6 +34,9 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
   bool _sauvegardeEnCours = false;
   bool _modificationActive = false;
 
+  /// Indique si l'utilisateur est vérifié. Si non, l'accès est bloqué.
+  bool _estVerifie = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +63,20 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
     _userService.ecouterUtilisateur(uid).listen((user) {
       if (mounted) {
         setState(() {
+          _estVerifie = user?.estVerifie ?? false;
+
+          // Si l'utilisateur n'est pas vérifié, on ne le laisse pas accéder à la page.
+          if (!_estVerifie) {
+            _chargement = false;
+            // Redirection après la construction de la frame actuelle.
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => const MonProfilScreen()),
+                );
+              }
+            });
+          }
           _utilisateur = user;
           _chargement = false;
           if (user != null) {
@@ -248,6 +266,12 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
     if (_chargement) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    // Si l'utilisateur n'est pas vérifié, on affiche un état intermédiaire
+    // avant la redirection pour éviter les erreurs de build.
+    if (!_estVerifie) {
+      return const Center(child: Text('Vérification du statut...'));
     }
 
     final user = _utilisateur;
