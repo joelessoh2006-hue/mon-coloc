@@ -327,7 +327,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     await _auth.signOut();
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
+        MaterialPageRoute(
           builder: (context) => LoginScreen(
             onConnexionReussie: () {
               // Callback appelé si l'utilisateur se re-connecte
@@ -820,163 +820,207 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // SECTION 3 : Sécurité & Justificatifs
   // ---------------------------------------------------------------------------
   Widget _buildSectionSecurite(UserModel user) {
-    final theme = Theme.of(context);
-    final roleLabel = user.role == 'etudiant' ? 'Étudiant' : 'Bailleur';
-
-    // Type de justificatif selon le rôle
-    final descriptionJustificatif = user.role == 'etudiant'
-        ? 'Carte d\'étudiant, reçu d\'inscription ou certificat de scolarité'
-        : 'CNI/Passeport, titre de propriété ou ACD, facture CIE/SODECI';
-
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(color: Colors.grey.shade200),
       ),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        shape: const RoundedRectangleBorder(),
-        collapsedShape: const RoundedRectangleBorder(),
-        leading: Icon(Icons.verified_rounded, color: Colors.green.shade600),
-        title: const Text(
-          'Sécurité & Justificatifs',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-        ),
-        subtitle: const Text('Statut du profil et documents'),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          const Divider(),
-          const SizedBox(height: 8),
+      child: user.role == 'bailleur'
+          ? _buildSectionSecuriteBailleur(user)
+          : _buildSectionSecuriteEtudiant(user),
+    );
+  }
 
-          // Badge de vérification
-          Row(
-            children: [
-              Icon(
-                user.estVerifie
-                    ? Icons.verified_rounded
-                    : Icons.access_time_rounded,
-                color: user.estVerifie ? Colors.green : Colors.orange,
-                size: 32,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      user.estVerifie
-                          ? 'Profil vérifié'
-                          : 'En attente de vérification',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: user.estVerifie
-                            ? Colors.green.shade700
-                            : Colors.orange.shade700,
-                      ),
-                    ),
-                    Text(
-                      user.estVerifie
-                          ? 'Votre identité a été confirmée.'
-                          : 'Téléversez vos justificatifs pour être vérifié.',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Divider(),
-          const SizedBox(height: 12),
+  /// Section sécurité pour les BAILLEURS (simplifiée)
+  Widget _buildSectionSecuriteBailleur(UserModel user) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: user.estVerifie
+          ? _buildBadgeVerifie()
+          : _buildBadgeEnAttenteExamen(),
+    );
+  }
 
-          // Upload justificatif
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Documents justificatifs',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'En tant que $roleLabel : $descriptionJustificatif',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+  /// Section sécurité pour les ÉTUDIANTS (avec upload)
+  Widget _buildSectionSecuriteEtudiant(UserModel user) {
+    final theme = Theme.of(context);
+    const descriptionJustificatif =
+        'Carte d\'étudiant, reçu d\'inscription ou certificat de scolarité';
 
-          // Statut du justificatif
-          if (user.justificatifUrl != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.green.shade600,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      'Justificatif téléversé',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // Bouton d'upload
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _choisirJustificatif,
-              icon: const Icon(Icons.upload_file_rounded),
-              label: Text(
-                user.justificatifUrl != null
-                    ? 'Remplacer le justificatif'
-                    : 'Téléverser un justificatif',
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: theme.colorScheme.primary,
-                side: BorderSide(color: theme.colorScheme.primary),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ),
-        ],
+    return ExpansionTile(
+      initiallyExpanded: true,
+      shape: const RoundedRectangleBorder(),
+      collapsedShape: const RoundedRectangleBorder(),
+      leading: Icon(Icons.verified_rounded, color: Colors.green.shade600),
+      title: const Text(
+        'Sécurité & Justificatifs',
+        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
       ),
+      subtitle: const Text('Statut du profil et documents'),
+      childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      children: [
+        const Divider(),
+        const SizedBox(height: 8),
+        _buildBadgeVerifieEtudiant(user),
+        const SizedBox(height: 16),
+        const Divider(),
+        const SizedBox(height: 12),
+        const Text(
+          'Documents justificatifs',
+          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'En tant que Étudiant : $descriptionJustificatif',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        if (user.justificatifUrl != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.green.shade600,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Justificatif téléversé',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _choisirJustificatif,
+            icon: const Icon(Icons.upload_file_rounded),
+            label: Text(
+              user.justificatifUrl != null
+                  ? 'Remplacer le justificatif'
+                  : 'Téléverser un justificatif',
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+              side: BorderSide(color: theme.colorScheme.primary),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadgeVerifie() {
+    return Row(
+      children: [
+        const Icon(Icons.verified_rounded, color: Colors.green, size: 32),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Profil vérifié',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green.shade700,
+                ),
+              ),
+              Text(
+                'Votre identité a été confirmée par l\'administrateur.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadgeEnAttenteExamen() {
+    return Row(
+      children: [
+        const Icon(
+          Icons.access_time_filled_rounded,
+          color: Colors.orange,
+          size: 32,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'En cours d\'examen',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+              Text(
+                'Vos documents ont bien été soumis et sont en cours d\'examen.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadgeVerifieEtudiant(UserModel user) {
+    return Row(
+      children: [
+        Icon(
+          user.estVerifie ? Icons.verified_rounded : Icons.access_time_rounded,
+          color: user.estVerifie ? Colors.green : Colors.orange,
+          size: 32,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                user.estVerifie
+                    ? 'Profil vérifié'
+                    : 'En attente de vérification',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: user.estVerifie
+                      ? Colors.green.shade700
+                      : Colors.orange.shade700,
+                ),
+              ),
+              Text(
+                user.estVerifie
+                    ? 'Votre identité a été confirmée.'
+                    : 'Téléversez vos justificatifs pour être vérifié.',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
