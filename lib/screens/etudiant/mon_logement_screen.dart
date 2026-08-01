@@ -128,21 +128,12 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
       );
       final index = currentPhotos.length;
 
-      String url;
-      if (image.path.startsWith('/virtual/') || image.path.isEmpty) {
-        final bytes = await image.readAsBytes();
-        url = await _userService.televerserPhotoLogementBytes(
-          uid: uid,
-          bytes: Uint8List.fromList(bytes),
-        );
-      } else {
-        url = await _userService.televerserPhotoLogement(
+      final url = await _userService.televerserPhotoLogement(
           uid: uid,
           imageFile: image,
-        );
-      }
+      );
 
-      currentPhotos.add(url);
+      currentPhotos.add(url); // Ajoute la nouvelle URL à la liste
       await _userService.mettreAJourPartiel(
         uid: uid,
         donnees: {'logementPhotos': currentPhotos},
