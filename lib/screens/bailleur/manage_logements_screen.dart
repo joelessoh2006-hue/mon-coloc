@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
+import 'package:mon_coloc/screens/bailleur/demandes_bailleur_screen.dart';
 
 /// Écran de gestion des annonces pour un bailleur.
 /// Affiche la liste des logements publiés par le bailleur connecté
@@ -37,6 +38,19 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
         ),
         centerTitle: true,
         elevation: 0,
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const DemandesBailleurScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.inbox_rounded),
+            tooltip: 'Voir les demandes',
+          ),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _streamLogements(),
@@ -267,6 +281,41 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
                   ],
                 ),
               ),
+            const Divider(height: 24),
+            // ----- Actions -----
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                StreamBuilder<QuerySnapshot>(
+                  stream: _firestore
+                      .collection('demandes_reservation')
+                      .where('logementId', isEqualTo: docId)
+                      .where('statut', isEqualTo: 'en_attente')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final count = snapshot.data?.docs.length ?? 0;
+
+                    return Badge(
+                      label: Text('$count'),
+                      isLabelVisible: count > 0,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const DemandesBailleurScreen(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.inbox_rounded),
+                        label: const Text('Voir les demandes'),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                // Vous pouvez ajouter d'autres boutons ici (ex: Modifier)
+              ],
+            ),
           ],
         ),
       ),

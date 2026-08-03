@@ -499,23 +499,39 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 20),
 
             // Bouton : Gérer mes annonces
-            SizedBox(
-              width: double.infinity,
-              child: _boutonAction(
-                theme: theme,
-                icone: Icons.business_center_rounded,
-                titre: 'Gérer mes annonces',
-                description: 'Consultez et modifiez vos annonces actives',
-                couleur: const Color(0xFF7C3AED),
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ManageLogementsScreen(),
+            StreamBuilder<QuerySnapshot>(
+                stream: _firestore
+                    .collection('demandes_reservation')
+                    .where('bailleurId', isEqualTo: _auth.currentUser?.uid)
+                    .where('statut', isEqualTo: 'en_attente')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final count = snapshot.data?.docs.length ?? 0;
+
+                  return Badge(
+                    label: Text('$count'),
+                    isLabelVisible: count > 0,
+                    largeSize: 24,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: _boutonAction(
+                        theme: theme,
+                        icone: Icons.business_center_rounded,
+                        titre: 'Gérer mes annonces',
+                        description:
+                            'Consultez et modifiez vos annonces actives',
+                        couleur: const Color(0xFF7C3AED),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ManageLogementsScreen(),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   );
-                },
-              ),
-            ),
+                }),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
+import 'package:mon_coloc/screens/etudiant/demandes_etudiant_screen.dart';
 import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
@@ -369,6 +370,35 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                   // --- EN-TÊTE ---
                   _buildHeader(user),
                   const SizedBox(height: 24),
+
+                  // --- Carte "Mes demandes" (Étudiant seulement) ---
+                  if (user.role == 'etudiant') ...[
+                    Card(
+                      elevation: 0,
+                      color: const Color(0xFFE8F5E9),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      child: ListTile(
+                        leading: const Icon(Icons.assignment_turned_in_rounded,
+                            color: Color(0xFF1E6B4E)),
+                        title: const Text('Mes demandes de réservation',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: const Text(
+                            'Suivre mes réservations et payer les acomptes'),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const DemandesEtudiantScreen()),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // --- SECTION 1 : Informations Personnelles & Académiques ---
                   _buildSectionInformations(user),
