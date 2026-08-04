@@ -3,7 +3,6 @@
 // PAS de champ École/Université ni de budget
 // Après validation -> redirige vers RegisterBailleurDocsScreen
 
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,8 +12,7 @@ import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/auth_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_bailleur_docs_screen.dart';
-import 'package:image/image.dart' as img; // Import pour la compression
-import 'dart:io';
+// Import pour la compression
 
 class RegisterBailleurScreen extends StatefulWidget {
   final VoidCallback onInscriptionTerminee;

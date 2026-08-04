@@ -159,7 +159,7 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 16),
+            separatorBuilder: (_, _) => const SizedBox(height: 16),
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               return _carteLogement(theme, data, docs[index].id);
@@ -202,7 +202,7 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Appartement - $nombrePieces pièce${nombrePieces > 1 ? 's' : ''}',
+                    'Logement - $nombrePieces pièce${nombrePieces > 1 ? 's' : ''}',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: theme.colorScheme.onSurface,

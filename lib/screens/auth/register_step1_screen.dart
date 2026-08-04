@@ -337,7 +337,7 @@ class _RegisterStep1ScreenState extends State<RegisterStep1Screen> {
 
                 // École / Université
                 DropdownButtonFormField<String>(
-                  value: _ecoleChoisie,
+                  initialValue: _ecoleChoisie,
                   isExpanded: true,
                   decoration: _decorationChamp(
                     label: 'École / Université',

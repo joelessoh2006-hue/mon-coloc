@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
+import 'package:mon_coloc/services/pdf_service.dart';
 
 class PaystackService {
   // Clé publique de test Paystack
@@ -9,7 +10,7 @@ class PaystackService {
 
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Lance le paiement Paystack pour un acompte de réservation ou un loyer mensuel
+  /// Lance le paiement Paystack et gère les mises à jour Firestore post-paiement.
   static Future<void> lancerPaiement({
     required BuildContext context,
     required String emailEtudiant,
@@ -17,7 +18,11 @@ class PaystackService {
     required String logementId,
     required String bailleurUid,
     required String etudiantUid,
-    required String typePaiement, // 'acompte_reservation' ou 'loyer_mensuel'
+    required String
+    typePaiement, // 'acompte_reservation', 'caution', 'loyer_mensuel'
+    String? locationId, // Requis pour 'caution' et 'loyer_mensuel'
+    String? echeanceId, // Requis pour 'loyer_mensuel'
+    required VoidCallback onSuccess,
   }) async {
     final int amountInSubunits = (montant * 100).toInt();
     final String reference =
@@ -41,38 +46,120 @@ class PaystackService {
           }
         },
         onSuccess: () async {
-          // 1. Enregistrer la transaction dans Firestore
-          await _firestore.collection('transactions').add({
-            'referencePaystack': reference,
-            'logementId': logementId,
-            'etudiantUid': etudiantUid,
-            'bailleurUid': bailleurUid,
-            'montant': montant,
-            'typePaiement': typePaiement,
-            'statut': 'succes',
-            'date': FieldValue.serverTimestamp(),
-          });
+          try {
+            final batch = _firestore.batch();
 
-          // 2. Mettre à jour l'état du logement si c'est une réservation
-          if (typePaiement == 'acompte_reservation') {
-            await _firestore.collection('logements').doc(logementId).update({
-              'estReserve': true,
-              'etudiantId': etudiantUid,
-            });
-          }
+            // 1. Préparer les données de la transaction (commun à tous les types)
+            final transactionRef = _firestore.collection('transactions').doc();
+            final transactionData = {
+              'referencePaystack': reference, // Garder la référence
+              'logementId': logementId,
+              'etudiantUid': etudiantUid,
+              'bailleurUid': bailleurUid,
+              'montant': montant,
+              'typePaiement': typePaiement,
+              'statut': 'succes',
+              'date': FieldValue.serverTimestamp(),
+            };
 
-          // 3. Notification de succès
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Paiement effectué avec succès ! 🎉'),
-                backgroundColor: Colors.green,
-              ),
-            );
+            batch.set(transactionRef, transactionData);
+
+            // 2. Mises à jour spécifiques au type de paiement
+            switch (typePaiement) {
+              case 'acompte_reservation':
+                final logementRef = _firestore
+                    .collection('logements')
+                    .doc(logementId);
+                batch.update(logementRef, {
+                  'estReserve': true,
+                  'statut': 'reserve',
+                });
+                // Pour l'acompte, on met à jour aussi la demande de réservation
+                final demandeQuery = await _firestore
+                    .collection('demandes_reservation')
+                    .where('logementId', isEqualTo: logementId)
+                    .where('etudiantId', isEqualTo: etudiantUid)
+                    .where('statut', isEqualTo: 'acceptee')
+                    .limit(1)
+                    .get();
+                if (demandeQuery.docs.isNotEmpty) {
+                  batch.update(demandeQuery.docs.first.reference, {
+                    'statut': 'payee',
+                    'datePaiement': FieldValue.serverTimestamp(),
+                  });
+                }
+                break;
+
+              case 'caution':
+                if (locationId == null) {
+                  throw Exception(
+                    "L'ID de la location est requis pour payer la caution.",
+                  );
+                }
+                final locationRef = _firestore
+                    .collection('locations')
+                    .doc(locationId);
+                batch.update(locationRef, {
+                  'cautionPayee': true,
+                  'datePaiementCaution': FieldValue.serverTimestamp(),
+                });
+                break;
+
+              case 'loyer_mensuel':
+                if (locationId == null || echeanceId == null) {
+                  throw Exception(
+                    "L'ID de la location et de l'échéance sont requis pour payer le loyer.",
+                  );
+                }
+                final echeanceRef = _firestore
+                    .collection('locations')
+                    .doc(locationId)
+                    .collection('echeances')
+                    .doc(echeanceId);
+                batch.update(echeanceRef, {
+                  'statut': 'paye',
+                  'datePaiement': FieldValue.serverTimestamp(),
+                });
+                break;
+            }
+
+            // 3. Exécuter l'opération atomique
+            await batch.commit();
+
+            // 4. Exécuter le callback de succès fourni
+            if (context.mounted) {
+              // Appeler le callback de succès pour rafraîchir l'UI de l'appelant
+              onSuccess();
+
+              // Afficher le SnackBar de succès et générer le PDF
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Paiement réussi ! Votre reçu a été généré.'),
+                  backgroundColor: Colors.green,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+
+              // Générer le reçu PDF avec les données de la transaction
+              await PdfService.generateReceipt(
+                transactionData: transactionData,
+              );
+            }
+          } catch (e) {
+            debugPrint("Erreur post-paiement Firestore : $e");
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Erreur post-paiement : $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
           }
         },
       );
     } catch (e) {
+      debugPrint("Erreur Paystack : $e");
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

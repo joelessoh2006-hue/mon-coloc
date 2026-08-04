@@ -185,7 +185,7 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
           // ÉTAT AVEC BINÔME VALIDÉ
           // ================================================================
           if (aBinome)
-            _buildEspaceEquipeOfficielle(currentUser, conversationAcceptee!),
+            _buildEspaceEquipeOfficielle(currentUser, conversationAcceptee),
 
           if (aBinome && demandesRecues.isNotEmpty)
             const Padding(

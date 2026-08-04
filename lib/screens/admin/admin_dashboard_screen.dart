@@ -854,7 +854,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                           : Image.network(
                               raw,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const Icon(
+                              errorBuilder: (_, _, _) => const Icon(
                                 Icons.broken_image_rounded,
                                 size: 48,
                                 color: Colors.grey,
@@ -908,7 +908,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                   // Fallback pour les anciennes URLs de Firebase Storage
                   return Image.network(
                     url,
-                    errorBuilder: (_, __, ___) => const Column(
+                    errorBuilder: (_, _, _) => const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.broken_image_rounded, size: 48),
@@ -1245,7 +1245,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           throw Exception('Logement introuvable pour cet ID de signalement.');
         }
 
-        final logementData = logementDoc.data() as Map<String, dynamic>?;
+        final logementData = logementDoc.data();
         uidToBlock = logementData?['idBailleur'] as String? ?? '';
 
         if (uidToBlock.isEmpty) {

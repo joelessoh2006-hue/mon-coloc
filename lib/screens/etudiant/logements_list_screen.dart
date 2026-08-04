@@ -50,7 +50,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
   Stream<QuerySnapshot> _streamLogements() {
     // On ne récupère que les logements qui ont été validés par un admin.
     Query query = FirebaseFirestore.instance
-        .collection('logements')
+        .collection('logements') //
         .where('status', isEqualTo: 'valide');
 
     // Filtrer par commune si une commune est sélectionnée
@@ -65,19 +65,28 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
     return query.snapshots();
   }
 
-  /// Filtre les documents localement pour le budget maximum
-  /// (car on ne peut pas avoir deux where contradictoires avec Firestore).
-  List<DocumentSnapshot> _filtrerParBudget(List<DocumentSnapshot> docs) {
+  /// Filtre les documents localement (budget, statut de réservation, etc.).
+  /// Le filtre `estReserve` est appliqué ici pour éviter un index composite sur Firestore.
+  List<DocumentSnapshot> _filtrerLogementsLocalement(
+    List<DocumentSnapshot> docs,
+  ) {
+    // 1. Filtrer les logements non réservés
+    List<DocumentSnapshot> filteredDocs = docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      // Conserver si estReserve est false ou si le champ n'existe pas (null)
+      return data?['estReserve'] != true;
+    }).toList();
+
+    // 2. Filtrer par budget maximum
     final budgetText = _budgetController.text.trim();
-    if (budgetText.isEmpty) return docs;
+    if (budgetText.isEmpty) return filteredDocs;
 
     final budgetMax = int.tryParse(budgetText);
-    if (budgetMax == null || budgetMax <= 0) return docs;
+    if (budgetMax == null || budgetMax <= 0) return filteredDocs;
 
-    return docs.where((doc) {
+    return filteredDocs.where((doc) {
       final data = doc.data() as Map<String, dynamic>?;
-      if (data == null) return false;
-      final loyer = data['loyer'] as int?;
+      final loyer = data?['loyer'] as int?;
       return loyer != null && loyer <= budgetMax;
     }).toList();
   }
@@ -137,7 +146,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                   }
 
                   final docs = snapshot.data?.docs ?? [];
-                  final docsFiltres = _filtrerParBudget(docs);
+                  final docsFiltres = _filtrerLogementsLocalement(docs);
 
                   if (docsFiltres.isEmpty) {
                     return Center(
@@ -222,6 +231,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
             flex: 3,
             child: DropdownButtonFormField<String>(
               initialValue: _communeChoisie,
+              isExpanded: true, // Pour éviter le RenderFlex overflow
               decoration: InputDecoration(
                 hintText: 'Commune',
                 prefixIcon: const Icon(Icons.location_city_rounded, size: 20),
@@ -300,9 +310,6 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
     final loyer = data['loyer'] as int? ?? 0;
     final nombrePieces = data['nombrePieces'] as int? ?? 0;
     final cautionMois = data['cautionMois'] as int? ?? 0;
-
-    // Type de logement : on déduit "Appartement" ou "Studio" selon le nb de pièces
-    final typeLogement = nombrePieces <= 1 ? 'Studio' : 'Appartement';
     final piecesLabel = nombrePieces <= 1
         ? '$nombrePieces pièce'
         : '$nombrePieces pièces';
@@ -392,7 +399,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                       children: [
                         // Type + pièces
                         Text(
-                          '$typeLogement - $piecesLabel',
+                          'Logement - $piecesLabel',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,

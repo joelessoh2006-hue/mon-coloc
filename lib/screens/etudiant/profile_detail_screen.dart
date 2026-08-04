@@ -499,7 +499,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
-                                errorBuilder: (_, __, ___) => Container(
+                                errorBuilder: (_, _, _) => Container(
                                   color: Colors.grey.shade200,
                                   child: const Center(
                                     child: Icon(

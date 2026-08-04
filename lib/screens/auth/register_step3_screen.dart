@@ -202,7 +202,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                               : theme.colorScheme.outline,
                         ),
                         value: _accepteMixite,
-                        activeColor: theme.colorScheme.primary,
+                        activeThumbColor: theme.colorScheme.primary,
                         onChanged: (val) => setState(() => _accepteMixite = val),
                         contentPadding:
                             const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -512,7 +512,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
                               : theme.colorScheme.outline,
                         ),
                         value: _besoinSilence,
-                        activeColor: theme.colorScheme.primary,
+                        activeThumbColor: theme.colorScheme.primary,
                         onChanged: (val) =>
                             setState(() => _besoinSilence = val),
                         contentPadding: const EdgeInsets.symmetric(
@@ -741,7 +741,7 @@ class _RegisterStep3ScreenState extends State<RegisterStep3Screen> {
           ),
         ),
         value: valeur,
-        activeColor: theme.colorScheme.primary,
+        activeThumbColor: theme.colorScheme.primary,
         onChanged: onChanged,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 2),

@@ -91,7 +91,7 @@ class _BailleurInboxScreenState extends State<BailleurInboxScreen> {
           return ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: triees.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, indent: 80),
+            separatorBuilder: (_, _) => const Divider(height: 1, indent: 80),
             itemBuilder: (context, index) {
               final conv = triees[index];
               final data = conv.data() as Map<String, dynamic>;

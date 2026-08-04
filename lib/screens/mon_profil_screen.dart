@@ -672,7 +672,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
 
           // Type de logement
           DropdownButtonFormField<String>(
-            value: _typeLogement,
+            initialValue: _typeLogement,
             decoration: InputDecoration(
               labelText: 'Type de logement souhaité',
               prefixIcon: const Icon(Icons.home_rounded),
@@ -740,7 +740,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
 
           // Niveau de propreté
           DropdownButtonFormField<Proprete>(
-            value: _proprete,
+            initialValue: _proprete,
             decoration: InputDecoration(
               labelText: 'Niveau de propreté',
               prefixIcon: const Icon(Icons.cleaning_services_rounded),

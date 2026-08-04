@@ -73,7 +73,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
         imageQuality: 80,
       );
 
-      if (images == null || images.isEmpty) return;
+      if (images.isEmpty) return;
 
       if (mounted) {
         setState(() {
@@ -237,6 +237,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
         'logementPhotos': logementPhotoUrls,
         'datePublication': FieldValue.serverTimestamp(),
         'status': 'en_attente',
+        'estReserve': false, // Ajout de la valeur par défaut
       });
       print("DEBUG: Écriture Firestore réussie !");
 
@@ -348,7 +349,7 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
                 _sectionLabel('Commune *'),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: _communeValue,
+                  initialValue: _communeValue,
                   decoration: _inputDecoration(
                     hint: 'Sélectionnez une commune',
                     prefixIcon: Icons.location_city_rounded,

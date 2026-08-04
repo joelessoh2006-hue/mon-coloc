@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mon_coloc/services/paystack_service.dart';
+import 'package:mon_coloc/services/pdf_service.dart';
 
 /// Écran affichant la liste des demandes de réservation pour un étudiant.
 ///
@@ -20,8 +21,12 @@ class DemandesEtudiantScreen extends StatefulWidget {
 class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
   final _currentUser = FirebaseAuth.instance.currentUser;
 
-  /// Lance le processus de paiement de l'acompte via Paystack.
-  Future<void> _payerAcompte(Map<String, dynamic> demandeData) async {
+  /// Lance le processus de paiement de l'acompte via Paystack et met à jour
+  /// la demande et le logement de manière atomique en cas de succès.
+  Future<void> _payerAcompte(
+    Map<String, dynamic> demandeData,
+    String demandeId,
+  ) async {
     if (_currentUser?.email == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -34,6 +39,7 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
       return;
     }
 
+    final logementId = demandeData['logementId'] as String?;
     final loyer = (demandeData['prix'] as num?)?.toDouble() ?? 0.0;
     final acompte = loyer * 0.30;
 
@@ -41,11 +47,55 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
       context: context,
       emailEtudiant: _currentUser!.email!,
       montant: acompte,
-      logementId: demandeData['logementId'] as String,
+      logementId: logementId ?? '',
       bailleurUid: demandeData['bailleurId'] as String,
-      etudiantUid: _currentUser!.uid,
+      etudiantUid: _currentUser.uid,
       typePaiement: 'acompte_reservation',
+      onSuccess: () {
+        // Le service s'occupe de tout (mise à jour DB, SnackBar, PDF).
+        // Le callback onSuccess peut être utilisé pour rafraîchir l'état local
+        // si nécessaire, mais ici le StreamBuilder s'en chargera.
+        if (mounted) {
+          // On pourrait par exemple remonter à l'écran précédent.
+        }
+      },
     );
+  }
+
+  /// Télécharge le reçu d'une transaction d'acompte.
+  Future<void> _telechargerRecu(String logementId) async {
+    if (_currentUser == null) return;
+
+    try {
+      final transactionSnapshot = await FirebaseFirestore.instance
+          .collection('transactions')
+          .where('etudiantUid', isEqualTo: _currentUser!.uid)
+          .where('logementId', isEqualTo: logementId)
+          .where('typePaiement', isEqualTo: 'acompte_reservation')
+          .orderBy('date', descending: true)
+          .limit(1)
+          .get();
+
+      if (transactionSnapshot.docs.isNotEmpty) {
+        final transactionData = transactionSnapshot.docs.first.data();
+        await PdfService.generateReceipt(transactionData: transactionData);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Aucune transaction trouvée pour ce paiement.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   @override
@@ -58,7 +108,7 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
               stream: FirebaseFirestore
                   .instance //
                   .collection('demandes_reservation')
-                  .where('etudiantId', isEqualTo: _currentUser!.uid)
+                  .where('etudiantId', isEqualTo: _currentUser.uid)
                   .orderBy('dateDemande', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
@@ -133,10 +183,10 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
                                 children: [
                                   Text(
                                     'Bailleur : ${data['nomBailleur'] ?? 'Bailleur'}',
-                                  ),
+                                  ), // TODO: Ajouter la date de la demande
                                   const SizedBox(height: 4),
                                   Text('Loyer : ${data['prix'] ?? 0} FCFA'),
-                                ],
+                                ], // TODO: Ajouter le nom du logement
                               ),
                             ),
                             if (dateDemande != null)
@@ -144,23 +194,9 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
                                 'Demandé le: ${DateFormat.yMMMd('fr_FR').add_jm().format(dateDemande)}',
                                 style: const TextStyle(color: Colors.grey),
                               ),
-                            if (statut == 'acceptee') ...[
-                              const SizedBox(height: 16),
-                              SizedBox(
-                                width: double.infinity,
-                                child: FilledButton.icon(
-                                  onPressed: () => _payerAcompte(data),
-                                  icon: const Icon(Icons.credit_card),
-                                  label: const Text("Payer l'acompte"),
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1E6B4E),
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            const SizedBox(height: 12),
+                            // Affiche le bouton d'action approprié
+                            _buildActionButton(statut, data, demande.id),
                           ],
                         ),
                       ),
@@ -170,6 +206,45 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
               },
             ),
     );
+  }
+
+  /// Construit le bouton d'action en fonction du statut de la demande.
+  Widget _buildActionButton(
+    String statut,
+    Map<String, dynamic> data,
+    String demandeId,
+  ) {
+    if (statut == 'payee') {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => _telechargerRecu(data['logementId'] as String),
+          icon: const Icon(Icons.receipt_long),
+          label: const Text("Télécharger le reçu"),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      );
+    }
+
+    if (statut == 'acceptee') {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () => _payerAcompte(data, demandeId),
+          icon: const Icon(Icons.credit_card),
+          label: const Text("Payer l'acompte"),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFF1E6B4E),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+        ),
+      );
+    }
+
+    // Pour les autres statuts (en_attente, refusee), on n'affiche aucun bouton.
+    return const SizedBox.shrink();
   }
 }
 
@@ -192,6 +267,10 @@ class _StatutBadge extends StatelessWidget {
       case 'refusee':
         couleur = Colors.red;
         texte = 'Refusée';
+        break;
+      case 'payee':
+        couleur = const Color(0xFF1E6B4E);
+        texte = 'Payée';
         break;
       default: // en_attente
         couleur = Colors.orange;

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
+import 'package:mon_coloc/screens/etudiant/mes_loyers_screen.dart';
 
 /// Écran "Mon Logement" pour les étudiants ayant déjà un logement.
 /// Permet de uploader des photos, voir/modifier les infos du logement.
@@ -296,6 +297,28 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
               ),
               const SizedBox(height: 24),
 
+              // Bouton Gérer mes loyers
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MesLoyersScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.payment_rounded),
+                  label: const Text('Gérer mes loyers et paiements'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               // Avertissement si aucune photo
               if (!hasPhotos && !_televersementEnCours)
                 Container(
@@ -414,7 +437,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                                           fit: BoxFit.cover,
                                           width: 180,
                                           height: double.infinity,
-                                          errorBuilder: (_, __, ___) =>
+                                          errorBuilder: (_, _, _) =>
                                               Container(
                                                 color: Colors.grey.shade200,
                                                 child: const Center(

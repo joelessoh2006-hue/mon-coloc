@@ -9,6 +9,7 @@
 ///
 /// La commande `flutterfire configure` générera automatiquement
 /// le fichier `firebase_options.dart` avec toutes les clés.
+library;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
