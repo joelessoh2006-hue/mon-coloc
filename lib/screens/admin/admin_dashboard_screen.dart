@@ -485,7 +485,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           );
         }
 
-        final documents = snapshot.data?.docs ?? [];
+        final documents = (snapshot.data?.docs ?? []).where((doc) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data == null) return false;
+          final conversationId = data['conversationId'] as String?;
+          // Filtrage strict : ne garde que les signalements avec un ID de conversation valide.
+          return conversationId != null && conversationId.isNotEmpty;
+        }).toList();
 
         if (documents.isEmpty) {
           return _buildEmptyState(

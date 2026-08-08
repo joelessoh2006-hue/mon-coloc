@@ -35,8 +35,55 @@
   <!-- Paystack JS SDK -->
   <script src="https://js.paystack.co/v1/inline.js"></script>
   <script src="paystack_interop.js"></script>
+
+  <style>
+    body {
+      background-color: #f0f2f5; /* Un fond propre et neutre */
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      overflow: hidden; /* Empêche le scroll pendant le chargement */
+    }
+
+    #loader-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid rgba(0, 0, 0, 0.1);
+      border-top-color: #1565C0; /* Couleur principale de votre thème */
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    #loader-container p {
+      margin-top: 20px;
+      font-size: 16px;
+      color: #555;
+      font-weight: 500;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
 </head>
 <body>
+  <!-- Écran de chargement personnalisé -->
+  <div id="loader-container">
+    <div class="spinner"></div>
+    <p>Chargement de l'application...</p>
+  </div>
+
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
