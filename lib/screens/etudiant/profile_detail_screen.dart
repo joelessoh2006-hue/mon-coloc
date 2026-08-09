@@ -43,8 +43,6 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
   void _initialiser() {
     try {
-      // Construire un UserModel à partir des données du matching
-      // (les champs sont déjà dans le Map retourné par matching_service)
       _user = UserModel(
         uid: widget.userData['uid'] as String? ?? '',
         email: widget.userData['email'] as String? ?? '',
@@ -54,10 +52,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         ecoleUniversite: widget.userData['ecoleUniversite'] as String? ?? '',
         role: widget.userData['role'] as String? ?? 'etudiant',
         estVerifie: widget.userData['estVerifie'] as bool? ?? false,
-        photoUrl: widget.userData['photoUrl'] as String?,
-        filiere: widget.userData['filiere'] as String?,
-        biographie: widget.userData['biographie'] as String?,
-        justificatifUrl: widget.userData['justificatifUrl'] as String?,
+        photoUrl: (widget.userData['photoUrl'] as String?) ?? '',
+        filiere: (widget.userData['filiere'] as String?) ?? '',
+        biographie: (widget.userData['biographie'] as String?) ?? '',
+        justificatifIdentiteUrl: widget.userData['justificatifIdentiteUrl'] as String?, // Uniquement celui-ci
         budgetMaxFCFA:
             (widget.userData['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
         quartierCible: UserModel.safeStringList(
@@ -72,8 +70,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           orElse: () => Sexe.homme,
         ),
         accepteMixite: widget.userData['accepteMixite'] as bool? ?? false,
-        zoneRecherche: widget.userData['zoneRecherche'] as String?,
-        typeLogement: widget.userData['typeLogement'] as String?,
+        zoneRecherche: (widget.userData['zoneRecherche'] as String?) ?? '',
+        typeLogement: (widget.userData['typeLogement'] as String?) ?? '',
         dateNaissance: widget.userData['dateNaissance'] != null
             ? (widget.userData['dateNaissance'] as Timestamp).toDate()
             : null,
@@ -101,7 +99,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           (e) => e.name == widget.userData['horaireRevision'],
           orElse: () => HoraireRevision.flexible,
         ),
-        niveauSociabilite: widget.userData['niveauSociabilite'] as int?,
+        niveauSociabilite: (widget.userData['niveauSociabilite'] as int?) ?? 3,
         aDejaUnLogement: widget.userData['aDejaUnLogement'] as bool? ?? false,
         logementQuartier: widget.userData['logementQuartier'] as String?,
         logementLoyerTotal: (widget.userData['logementLoyerTotal'] as num?)
@@ -111,9 +109,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         logementDescription: widget.userData['logementDescription'] as String?,
         logementPhotos: UserModel.safeStringList(
           widget.userData['logementPhotos'],
-        ),
-        habitudesQuotidiennes:
-            widget.userData['habitudesQuotidiennes'] as String?,
+        ), 
+        habitudesQuotidiennes: widget.userData['habitudesQuotidiennes'] != null
+            ? UserModel.safeStringList(widget.userData['habitudesQuotidiennes'])
+            : null,
         genreColocataireRecherche:
             widget.userData['genreColocataireRecherche'] as String?,
         dateInscription: widget.userData['dateInscription'] != null
@@ -1174,6 +1173,8 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         return 'A des animaux';
       case StatutAnimaux.tolere:
         return 'Animaux tolérés';
+      case StatutAnimaux.oui:
+        return 'Animaux acceptés';
     }
   }
 
@@ -1185,6 +1186,10 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
         return 'Nuit';
       case HoraireRevision.flexible:
         return 'Flexible';
+      case HoraireRevision.matinal:
+        return 'Matin';
+      case HoraireRevision.soir:
+        return 'Soir';
     }
   }
 

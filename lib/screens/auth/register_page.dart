@@ -1,10 +1,13 @@
 // Page d'inscription progressive pour les étudiants uniquement
 // Orchestre : Firebase Auth (étape 1) + collecte des infos → création UserModel → Firestore
 // Le rôle est passé en paramètre depuis RoleSelectionScreen
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/services/auth_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_step1_screen.dart';
@@ -60,6 +63,7 @@ class _RegisterPageState extends State<RegisterPage> {
   double _logementLoyerTotal = 0;
   double _logementPartColoc = 0;
   String _logementDescription = '';
+  List<XFile> _logementPhotosFiles = [];
 
   // Données étape 3 : Sexe & Préférence de mixité
   Sexe _sexe = Sexe.homme;
@@ -129,6 +133,7 @@ class _RegisterPageState extends State<RegisterPage> {
     double? logementLoyerTotal,
     double? logementPartColoc,
     String? logementDescription,
+    List<XFile>? logementPhotos,
   }) {
     setState(() {
       _budgetMaxFCFA = budgetMaxFCFA;
@@ -138,6 +143,7 @@ class _RegisterPageState extends State<RegisterPage> {
       _logementLoyerTotal = logementLoyerTotal ?? 0;
       _logementPartColoc = logementPartColoc ?? 0;
       _logementDescription = logementDescription ?? '';
+      _logementPhotosFiles = logementPhotos ?? [];
     });
     _allerPage(2);
   }
@@ -175,6 +181,24 @@ class _RegisterPageState extends State<RegisterPage> {
     await _finaliserInscription();
   }
 
+  /// Compresse et encode une liste d'images en Base64.
+  Future<List<String>> _processerPhotosLogement(List<XFile> files) async {
+    List<String> base64Images = [];
+    for (var file in files) {
+      try {
+        final bytes = await file.readAsBytes();
+        // Note: Une compression plus agressive pourrait être faite ici avec le package 'image'
+        // Pour l'instant, on se contente de l'encodage.
+        final base64String = base64Encode(bytes);
+        base64Images.add('data:image/jpeg;base64,$base64String');
+      } catch (e) {
+        debugPrint("Erreur d'encodage d'image : $e");
+        // On pourrait choisir d'ignorer l'image ou de logger l'erreur.
+      }
+    }
+    return base64Images;
+  }
+
   /// Crée le compte Firebase + Firestore pour l'étudiant
   Future<void> _finaliserInscription() async {
     setState(() => _enChargement = true);
@@ -194,6 +218,11 @@ class _RegisterPageState extends State<RegisterPage> {
       }
 
       final aDejaUnLogement = _statutLogement == StatutLogement.aDejaUnLogement;
+
+      // Traiter les photos si l'utilisateur a un logement
+      final photosEncodees = aDejaUnLogement
+          ? await _processerPhotosLogement(_logementPhotosFiles)
+          : <String>[];
 
       // Étudiant : inscription complète avec toutes les données
       final user = UserModel(
@@ -215,7 +244,6 @@ class _RegisterPageState extends State<RegisterPage> {
         fumeur: _fumeur,
         statutAnimaux: _statutAnimaux,
         typeAnimaux: _typeAnimaux,
-        bruitsFortsVolume: _bruitsFortsVolume,
         appelsFrequents: _appelsFrequents,
         soireesAmis: _soireesAmis,
         besoinSilence: _besoinSilence,
@@ -225,6 +253,7 @@ class _RegisterPageState extends State<RegisterPage> {
         logementLoyerTotal: aDejaUnLogement ? _logementLoyerTotal : null,
         logementPartColoc: aDejaUnLogement ? _logementPartColoc : null,
         logementDescription: aDejaUnLogement ? _logementDescription : null,
+        logementPhotos: photosEncodees,
         dateNaissance: _dateNaissance,
         age: _age,
       );

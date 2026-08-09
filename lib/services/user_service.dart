@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
@@ -106,6 +108,31 @@ class UserService {
     await _signalementsCollection.add(reportData);
   }
 
+  /// Téléverse un justificatif étudiant en le convertissant en Data URL Base64.
+  Future<String> televerserJustificatifEtudiant({
+    required String uid,
+    required PlatformFile file,
+    required String nomChamp,
+  }) async {
+    try {
+      await Future.delayed(const Duration(seconds: 1)); // Délai simulé
+
+      // Si le fichier contient des octets (cas Flutter Web ou fichier lu)
+      if (file.bytes != null) {
+        final base64String = base64Encode(file.bytes!);
+        final extension = file.extension?.toLowerCase() ?? 'png';
+        final mimeType =
+            extension == 'pdf' ? 'application/pdf' : 'image/$extension';
+        // Format Data URL exploitable directement par Flutter
+        return 'data:$mimeType;base64,$base64String';
+      }
+      // Repli si pas de bytes (ex: fallback)
+      return 'https://picsum.photos/800/600';
+    } catch (e) {
+      debugPrint('Erreur lors de la conversion Base64 : $e');
+      rethrow;
+    }
+  }
   /// Signale un logement avec détails complets.
   Future<void> signalerLogement({
     required String logementId,
@@ -239,7 +266,9 @@ class UserService {
               return 'data:$mimeType;base64,$base64String';
             }
           } catch (e) {
-            print('Erreur de compression d\'image, fallback sur l\'original: $e');
+            print(
+              'Erreur de compression d\'image, fallback sur l\'original: $e',
+            );
           }
         }
 

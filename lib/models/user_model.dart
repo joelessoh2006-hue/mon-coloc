@@ -1,138 +1,100 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum StatutLogement { aDejaUnLogement, chercheUnLogement }
-
+// --- ÉNUMÉRATIONS COMPLÈTES ---
+enum StatutLogement { chercheUnLogement, aDejaUnLogement }
 enum Sexe { homme, femme }
-
-enum StatutAnimaux { non, enAPossession, tolere }
-
-enum HoraireRevision { jour, nuit, flexible }
-
-enum RythmeDeVie { leveTot, coucheTard }
-
 enum Proprete { tresPropre, propre, moyen }
+enum RythmeDeVie { leveTot, coucheTard, flexible }
+enum StatutAnimaux { oui, non, enAPossession, tolere }
+enum HoraireRevision { matinal, soir, flexible, jour, nuit }
 
-/// Modèle utilisateur complet pour l'application Mon Coloc.
-/// Stocké dans la collection Firestore 'users'.
 class UserModel {
   final String uid;
   final String email;
   final String nom;
   final String prenom;
-  final String telephone; // format +225
-  final String ecoleUniversite;
-
-  /// Rôle : 'etudiant' ou 'bailleur'
-  final String role;
-
-  /// Vérification du compte (false par défaut, passe à true après validation)
+  final String telephone;
+  final String role; // 'etudiant' ou 'bailleur'
   final bool estVerifie;
-
-  /// Indique si le compte est bloqué par l'admin (true = accès interdit)
-  final bool estBloque;
-
-  /// URL de la photo de profil (Firebase Storage)
-  final String? photoUrl;
-
-  /// Filière d'études (étudiant)
-  final String? filiere;
-
-  /// Courte biographie / présentation
-  final String? biographie;
-
-  /// URL du document justificatif (Firebase Storage)
-  final String? justificatifUrl;
-
-  /// URLs des documents justificatifs pour le bailleur (Firebase Storage)
-  final List<String>? documentsUrls;
-
-  // Critères de logement (Étape 2 — uniquement pour étudiants)
+  
+  // Champs profil / préférences étudiant
+  final String ecoleUniversite;
+  final String filiere;
+  final String biographie;
+  final String photoUrl;
   final double budgetMaxFCFA;
-  final List<String> quartierCible; // Quartier(s) ciblé(s) à Abidjan
-  final StatutLogement statutLogement;
-  final Sexe sexe;
-  final bool accepteMixite;
-
-  /// Zone de recherche (affinage quartier)
-  final String? zoneRecherche;
-
-  /// Type de logement souhaité (Appartement, Studio, Chambre, etc.)
-  final String? typeLogement;
-
-  // Habitudes de vie (Étape 3 — uniquement pour étudiants)
+  final List<String> quartierCible;
+  final String zoneRecherche;
+  final String typeLogement;
+  
+  // Logement et critères de vie
+  final StatutLogement? statutLogement;
+  final Sexe? sexe;
   final Proprete proprete;
-  final RythmeDeVie rythmeDeVie;
-  final bool fumeur;
+  final RythmeDeVie? rythmeDeVie;
   final StatutAnimaux statutAnimaux;
-  final String? typeAnimaux;
-  final bool bruitsFortsVolume;
-  final bool appelsFrequents;
-  final bool soireesAmis;
-  final bool besoinSilence;
   final HoraireRevision horaireRevision;
+  final bool fumeur;
+  final bool besoinSilence;
+  final bool accepteMixite;
+  final int niveauSociabilite;
 
-  /// Niveau de sociabilité (1-5)
-  final int? niveauSociabilite;
+  // Habitudes spécifiques
+  final bool bruitsFortsVolume;
+  final bool soireesAmis;
+  final bool appelsFrequents;
 
-  /// Indique si l'étudiant a déjà un logement (true) ou en cherche un (false)
-  final bool aDejaUnLogement;
-
-  // Infos logement (uniquement si aDejaUnLogement == true)
-  final String? logementQuartier; // Quartier/Zone du logement actuel
-  final double? logementLoyerTotal; // Loyer mensuel total
-  final double?
-  logementPartColoc; // Part du loyer demandée au futur colocataire
-  final String? logementDescription; // Description rapide du logement
-
-  // Photos du logement (Firebase Storage URLs, uniquement si aDejaUnLogement == true)
+  // Infos logement (si aDejaUnLogement)
+  final String? logementQuartier;
+  final double? logementLoyerTotal;
+  final double? logementPartColoc;
+  final String? logementDescription;
   final List<String> logementPhotos;
+  final List<String>? habitudesQuotidiennes;
+  final String? genreColocataireRecherche;
 
-  // Mode de vie & Matching (uniquement si aDejaUnLogement == true)
-  final String? habitudesQuotidiennes; // "Calme" ou "Dynamique"
-  final String? genreColocataireRecherche; // "Homme", "Femme" ou "Peu importe"
+  // Justificatifs
+  final String? justificatifIdentiteUrl;
+  final String? justificatifLoyerUrl;
+  final String? justificatifBailUrl;
+  final List<String> documentsUrls;
 
-  /// Date de naissance (optionnelle, pour affichage âge dynamique)
+  // Paramètres de compatibilité pour les formulaires d'inscription / écrans
+  final String? typeAnimaux;
   final DateTime? dateNaissance;
-
-  /// Âge calculé à partir de la date de naissance (stocké en cache pour requêtes)
-  final int? age;
-
-  final DateTime dateInscription;
+  final int? _ageParam;
+  final bool? aDejaUnLogementParam;
+  final DateTime? dateInscription;
 
   UserModel({
     required this.uid,
     required this.email,
     required this.nom,
     required this.prenom,
-    required this.telephone,
-    required this.ecoleUniversite,
-    this.role = 'etudiant',
-    this.estVerifie = false,
-    this.estBloque = false,
-    this.photoUrl,
-    this.filiere,
-    this.biographie,
-    this.justificatifUrl,
-    this.documentsUrls,
-    required this.budgetMaxFCFA,
-    required this.quartierCible,
-    required this.statutLogement,
-    required this.sexe,
-    required this.accepteMixite,
-    this.zoneRecherche,
-    this.typeLogement,
-    required this.proprete,
-    required this.rythmeDeVie,
-    required this.fumeur,
-    required this.statutAnimaux,
-    this.typeAnimaux,
-    required this.bruitsFortsVolume,
-    required this.appelsFrequents,
-    required this.soireesAmis,
-    required this.besoinSilence,
-    required this.horaireRevision,
-    this.niveauSociabilite,
-    this.aDejaUnLogement = false,
+    this.telephone = '',
+    required this.role,
+    required this.estVerifie,
+    this.ecoleUniversite = '',
+    this.filiere = '',
+    this.biographie = '',
+    this.photoUrl = '',
+    this.budgetMaxFCFA = 0.0,
+    this.quartierCible = const [],
+    this.zoneRecherche = '',
+    this.typeLogement = '',
+    this.statutLogement,
+    this.sexe,
+    this.proprete = Proprete.propre,
+    this.rythmeDeVie,
+    this.statutAnimaux = StatutAnimaux.non,
+    this.horaireRevision = HoraireRevision.flexible,
+    this.fumeur = false,
+    this.besoinSilence = false,
+    this.accepteMixite = true,
+    this.niveauSociabilite = 3,
+    this.bruitsFortsVolume = false,
+    this.soireesAmis = false,
+    this.appelsFrequents = false,
     this.logementQuartier,
     this.logementLoyerTotal,
     this.logementPartColoc,
@@ -140,242 +102,242 @@ class UserModel {
     this.logementPhotos = const [],
     this.habitudesQuotidiennes,
     this.genreColocataireRecherche,
+    this.justificatifIdentiteUrl,
+    this.justificatifLoyerUrl,
+    this.justificatifBailUrl,
+    this.documentsUrls = const [],
+    this.typeAnimaux,
     this.dateNaissance,
-    this.age,
-    DateTime? dateInscription,
-  }) : dateInscription = dateInscription ?? DateTime.now();
+    int? age,
+    bool? aDejaUnLogement,
+    this.dateInscription,
+  })  : _ageParam = age,
+        aDejaUnLogementParam = aDejaUnLogement;
 
-  /// Convertit le modèle en un Map pour Firestore
-  Map<String, dynamic> toFirestore() {
+  bool get aDejaUnLogement => 
+      aDejaUnLogementParam ?? (statutLogement == StatutLogement.aDejaUnLogement);
+
+  int get age => _ageParam ?? 22; 
+
+  static List<String> safeStringList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) {
+      return value.map((e) => e.toString()).toList();
+    }
+    return [];
+  }
+
+  factory UserModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return UserModel.fromMap(data, doc.id);
+  }
+
+  factory UserModel.fromMap(Map<String, dynamic> map, String id) {
+    return UserModel(
+      uid: id,
+      email: map['email'] ?? '',
+      nom: map['nom'] ?? '',
+      prenom: map['prenom'] ?? '',
+      telephone: map['telephone'] ?? '',
+      role: map['role'] ?? 'etudiant',
+      estVerifie: map['estVerifie'] ?? false,
+      ecoleUniversite: map['ecoleUniversite'] ?? '',
+      filiere: map['filiere'] ?? '',
+      biographie: map['biographie'] ?? '',
+      photoUrl: map['photoUrl'] ?? '',
+      budgetMaxFCFA: (map['budgetMaxFCFA'] as num?)?.toDouble() ?? 0.0,
+      quartierCible: safeStringList(map['quartierCible']),
+      zoneRecherche: map['zoneRecherche'] ?? '',
+      typeLogement: map['typeLogement'] ?? '',
+      statutLogement: map['statutLogement'] != null
+          ? StatutLogement.values.firstWhere(
+              (e) => e.name == map['statutLogement'],
+              orElse: () => StatutLogement.chercheUnLogement,
+            )
+          : null,
+      sexe: map['sexe'] != null
+          ? Sexe.values.firstWhere((e) => e.name == map['sexe'], orElse: () => Sexe.homme)
+          : null,
+      proprete: map['proprete'] != null
+          ? Proprete.values.firstWhere((e) => e.name == map['proprete'], orElse: () => Proprete.propre)
+          : Proprete.propre,
+      rythmeDeVie: map['rythmeDeVie'] != null
+          ? RythmeDeVie.values.firstWhere((e) => e.name == map['rythmeDeVie'], orElse: () => RythmeDeVie.flexible)
+          : null,
+      statutAnimaux: map['statutAnimaux'] != null
+          ? StatutAnimaux.values.firstWhere((e) => e.name == map['statutAnimaux'], orElse: () => StatutAnimaux.non)
+          : StatutAnimaux.non,
+      horaireRevision: map['horaireRevision'] != null
+          ? HoraireRevision.values.firstWhere((e) => e.name == map['horaireRevision'], orElse: () => HoraireRevision.flexible)
+          : HoraireRevision.flexible,
+      fumeur: map['fumeur'] ?? false,
+      besoinSilence: map['besoinSilence'] ?? false,
+      accepteMixite: map['accepteMixite'] ?? true,
+      niveauSociabilite: map['niveauSociabilite'] ?? 3,
+      bruitsFortsVolume: map['bruitsFortsVolume'] ?? false,
+      soireesAmis: map['soireesAmis'] ?? false,
+      appelsFrequents: map['appelsFrequents'] ?? false,
+      logementQuartier: map['logementQuartier'],
+      logementLoyerTotal: (map['logementLoyerTotal'] as num?)?.toDouble(),
+      logementPartColoc: (map['logementPartColoc'] as num?)?.toDouble(),
+      logementDescription: map['logementDescription'],
+      logementPhotos: safeStringList(map['logementPhotos']),
+      genreColocataireRecherche: map['genreColocataireRecherche'],
+      habitudesQuotidiennes: map['habitudesQuotidiennes'] != null ? safeStringList(map['habitudesQuotidiennes']) : null,
+      justificatifIdentiteUrl: map['justificatifIdentiteUrl'],
+      justificatifLoyerUrl: map['justificatifLoyerUrl'],
+      justificatifBailUrl: map['justificatifBailUrl'],
+      documentsUrls: safeStringList(map['documentsUrls']),
+      dateNaissance: map['dateNaissance'] != null 
+          ? (map['dateNaissance'] is Timestamp 
+              ? (map['dateNaissance'] as Timestamp).toDate() 
+              : DateTime.tryParse(map['dateNaissance'].toString()))
+          : null,
+      dateInscription: map['dateInscription'] != null
+          ? (map['dateInscription'] is Timestamp
+              ? (map['dateInscription'] as Timestamp).toDate()
+              : DateTime.tryParse(map['dateInscription'].toString()))
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
     return {
-      'uid': uid,
       'email': email,
       'nom': nom,
       'prenom': prenom,
       'telephone': telephone,
-      'ecoleUniversite': ecoleUniversite,
       'role': role,
       'estVerifie': estVerifie,
-      'estBloque': estBloque,
-      'photoUrl': photoUrl,
+      'ecoleUniversite': ecoleUniversite,
       'filiere': filiere,
       'biographie': biographie,
-      'justificatifUrl': justificatifUrl,
-      'documentsUrls': documentsUrls,
+      'photoUrl': photoUrl,
       'budgetMaxFCFA': budgetMaxFCFA,
       'quartierCible': quartierCible,
-      'statutLogement': statutLogement.name,
-      'sexe': sexe.name,
-      'accepteMixite': accepteMixite,
       'zoneRecherche': zoneRecherche,
       'typeLogement': typeLogement,
+      'statutLogement': statutLogement?.name,
+      'sexe': sexe?.name,
       'proprete': proprete.name,
-      'rythmeDeVie': rythmeDeVie.name,
-      'fumeur': fumeur,
+      'rythmeDeVie': rythmeDeVie?.name,
       'statutAnimaux': statutAnimaux.name,
-      'typeAnimaux': typeAnimaux,
-      'bruitsFortsVolume': bruitsFortsVolume,
-      'appelsFrequents': appelsFrequents,
-      'soireesAmis': soireesAmis,
-      'besoinSilence': besoinSilence,
       'horaireRevision': horaireRevision.name,
+      'fumeur': fumeur,
+      'besoinSilence': besoinSilence,
+      'accepteMixite': accepteMixite,
       'niveauSociabilite': niveauSociabilite,
-      'aDejaUnLogement': aDejaUnLogement,
+      'bruitsFortsVolume': bruitsFortsVolume,
+      'soireesAmis': soireesAmis,
+      'appelsFrequents': appelsFrequents,
       'logementQuartier': logementQuartier,
       'logementLoyerTotal': logementLoyerTotal,
       'logementPartColoc': logementPartColoc,
       'logementDescription': logementDescription,
       'logementPhotos': logementPhotos,
-      'habitudesQuotidiennes': habitudesQuotidiennes,
       'genreColocataireRecherche': genreColocataireRecherche,
-      'dateNaissance': dateNaissance != null
-          ? Timestamp.fromDate(dateNaissance!)
-          : null,
-      'age': age,
-      'dateInscription': Timestamp.fromDate(dateInscription),
+      'habitudesQuotidiennes': habitudesQuotidiennes,
+      'justificatifIdentiteUrl': justificatifIdentiteUrl,
+      'justificatifLoyerUrl': justificatifLoyerUrl,
+      'justificatifBailUrl': justificatifBailUrl,
+      'documentsUrls': documentsUrls,
+      'typeAnimaux': typeAnimaux,
+      'dateNaissance': dateNaissance,
+      'dateInscription': dateInscription,
     };
   }
 
-  /// Convertit un champ Firestore potentiellement String ou List en `List<String>`.
-  static List<String> safeStringList(dynamic value) {
-    if (value == null) return [];
-    if (value is List) return List<String>.from(value.map((e) => e.toString()));
-    if (value is String) return [value];
-    return [];
-  }
+  Map<String, dynamic> toFirestore() => toMap();
 
-  /// Calcule l'âge exact à partir d'une date de naissance.
-  static int calculerAge(DateTime dateNaissance) {
-    final now = DateTime.now();
-    int age = now.year - dateNaissance.year;
-    if (now.month < dateNaissance.month ||
-        (now.month == dateNaissance.month && now.day < dateNaissance.day)) {
-      age--;
-    }
-    return age;
-  }
-
-  /// Crée un UserModel à partir d'un DocumentSnapshot Firestore
-  factory UserModel.fromFirestore(DocumentSnapshot doc) {
-    final data = doc.data() as Map<String, dynamic>;
-    return UserModel(
-      uid: data['uid'] as String,
-      email: data['email'] as String,
-      nom: data['nom'] as String,
-      prenom: data['prenom'] as String,
-      telephone: data['telephone'] as String,
-      ecoleUniversite: data['ecoleUniversite'] as String,
-      role: data['role'] as String? ?? 'etudiant',
-      estVerifie: data['estVerifie'] as bool? ?? false,
-      estBloque: data['estBloque'] as bool? ?? false,
-      photoUrl: data['photoUrl'] as String?,
-      filiere: data['filiere'] as String?,
-      biographie: data['biographie'] as String?,
-      justificatifUrl: data['justificatifUrl'] as String?,
-      documentsUrls: safeStringList(data['documentsUrls']),
-      budgetMaxFCFA: (data['budgetMaxFCFA'] as num?)?.toDouble() ?? 0,
-      quartierCible: safeStringList(data['quartierCible']),
-      statutLogement: StatutLogement.values.firstWhere(
-        (e) => e.name == data['statutLogement'],
-        orElse: () => StatutLogement.chercheUnLogement,
-      ),
-      sexe: Sexe.values.firstWhere(
-        (e) => e.name == data['sexe'],
-        orElse: () => Sexe.homme,
-      ),
-      accepteMixite: data['accepteMixite'] as bool? ?? false,
-      zoneRecherche: data['zoneRecherche'] as String?,
-      typeLogement: data['typeLogement'] as String?,
-      proprete: Proprete.values.firstWhere(
-        (e) => e.name == data['proprete'],
-        orElse: () => Proprete.propre,
-      ),
-      rythmeDeVie: RythmeDeVie.values.firstWhere(
-        (e) => e.name == data['rythmeDeVie'],
-        orElse: () => RythmeDeVie.leveTot,
-      ),
-      fumeur: data['fumeur'] as bool? ?? false,
-      statutAnimaux: StatutAnimaux.values.firstWhere(
-        (e) => e.name == data['statutAnimaux'],
-        orElse: () => StatutAnimaux.non,
-      ),
-      typeAnimaux: data['typeAnimaux'] as String?,
-      bruitsFortsVolume: data['bruitsFortsVolume'] as bool? ?? false,
-      appelsFrequents: data['appelsFrequents'] as bool? ?? false,
-      soireesAmis: data['soireesAmis'] as bool? ?? false,
-      besoinSilence: data['besoinSilence'] as bool? ?? false,
-      horaireRevision: HoraireRevision.values.firstWhere(
-        (e) => e.name == data['horaireRevision'],
-        orElse: () => HoraireRevision.flexible,
-      ),
-      niveauSociabilite: data['niveauSociabilite'] as int?,
-      aDejaUnLogement: data['aDejaUnLogement'] as bool? ?? false,
-      logementQuartier: data['logementQuartier'] as String?,
-      logementLoyerTotal: (data['logementLoyerTotal'] as num?)?.toDouble(),
-      logementPartColoc: (data['logementPartColoc'] as num?)?.toDouble(),
-      logementDescription: data['logementDescription'] as String?,
-      logementPhotos: safeStringList(data['logementPhotos']),
-      habitudesQuotidiennes: data['habitudesQuotidiennes'] as String?,
-      genreColocataireRecherche: data['genreColocataireRecherche'] as String?,
-      dateNaissance: data['dateNaissance'] != null
-          ? (data['dateNaissance'] as Timestamp).toDate()
-          : null,
-      age: data['age'] as int?,
-      dateInscription: data['dateInscription'] != null
-          ? (data['dateInscription'] as Timestamp).toDate()
-          : DateTime.now(),
-    );
-  }
-
-  /// Retourne une copie avec les champs modifiés
   UserModel copyWith({
-    String? uid,
     String? email,
     String? nom,
     String? prenom,
     String? telephone,
-    String? ecoleUniversite,
     String? role,
     bool? estVerifie,
-    String? photoUrl,
+    String? ecoleUniversite,
     String? filiere,
     String? biographie,
-    String? justificatifUrl,
-    List<String>? documentsUrls,
+    String? photoUrl,
     double? budgetMaxFCFA,
     List<String>? quartierCible,
-    StatutLogement? statutLogement,
-    Sexe? sexe,
-    bool? accepteMixite,
     String? zoneRecherche,
     String? typeLogement,
+    StatutLogement? statutLogement,
+    Sexe? sexe,
     Proprete? proprete,
     RythmeDeVie? rythmeDeVie,
-    bool? fumeur,
     StatutAnimaux? statutAnimaux,
-    String? typeAnimaux,
-    bool? bruitsFortsVolume,
-    bool? appelsFrequents,
-    bool? soireesAmis,
-    bool? besoinSilence,
     HoraireRevision? horaireRevision,
+    bool? fumeur,
+    bool? besoinSilence,
+    bool? accepteMixite,
     int? niveauSociabilite,
-    bool? aDejaUnLogement,
+    bool? bruitsFortsVolume,
+    bool? soireesAmis,
+    bool? appelsFrequents,
     String? logementQuartier,
     double? logementLoyerTotal,
     double? logementPartColoc,
     String? logementDescription,
     List<String>? logementPhotos,
-    String? habitudesQuotidiennes,
     String? genreColocataireRecherche,
+    List<String>? habitudesQuotidiennes,
+    String? justificatifIdentiteUrl,
+    String? justificatifLoyerUrl,
+    String? justificatifBailUrl,
+    List<String>? documentsUrls,
+    String? typeAnimaux,
     DateTime? dateNaissance,
     int? age,
+    bool? aDejaUnLogement,
     DateTime? dateInscription,
   }) {
     return UserModel(
-      uid: uid ?? this.uid,
+      uid: this.uid,
       email: email ?? this.email,
       nom: nom ?? this.nom,
       prenom: prenom ?? this.prenom,
       telephone: telephone ?? this.telephone,
-      ecoleUniversite: ecoleUniversite ?? this.ecoleUniversite,
       role: role ?? this.role,
       estVerifie: estVerifie ?? this.estVerifie,
-      photoUrl: photoUrl ?? this.photoUrl,
+      ecoleUniversite: ecoleUniversite ?? this.ecoleUniversite,
       filiere: filiere ?? this.filiere,
       biographie: biographie ?? this.biographie,
-      justificatifUrl: justificatifUrl ?? this.justificatifUrl,
-      documentsUrls: documentsUrls ?? this.documentsUrls,
+      photoUrl: photoUrl ?? this.photoUrl,
       budgetMaxFCFA: budgetMaxFCFA ?? this.budgetMaxFCFA,
       quartierCible: quartierCible ?? this.quartierCible,
-      statutLogement: statutLogement ?? this.statutLogement,
-      sexe: sexe ?? this.sexe,
-      accepteMixite: accepteMixite ?? this.accepteMixite,
       zoneRecherche: zoneRecherche ?? this.zoneRecherche,
       typeLogement: typeLogement ?? this.typeLogement,
+      statutLogement: statutLogement ?? this.statutLogement,
+      sexe: sexe ?? this.sexe,
       proprete: proprete ?? this.proprete,
       rythmeDeVie: rythmeDeVie ?? this.rythmeDeVie,
-      fumeur: fumeur ?? this.fumeur,
       statutAnimaux: statutAnimaux ?? this.statutAnimaux,
-      typeAnimaux: typeAnimaux ?? this.typeAnimaux,
-      bruitsFortsVolume: bruitsFortsVolume ?? this.bruitsFortsVolume,
-      appelsFrequents: appelsFrequents ?? this.appelsFrequents,
-      soireesAmis: soireesAmis ?? this.soireesAmis,
-      besoinSilence: besoinSilence ?? this.besoinSilence,
       horaireRevision: horaireRevision ?? this.horaireRevision,
+      fumeur: fumeur ?? this.fumeur,
+      besoinSilence: besoinSilence ?? this.besoinSilence,
+      accepteMixite: accepteMixite ?? this.accepteMixite,
       niveauSociabilite: niveauSociabilite ?? this.niveauSociabilite,
-      aDejaUnLogement: aDejaUnLogement ?? this.aDejaUnLogement,
+      bruitsFortsVolume: bruitsFortsVolume ?? this.bruitsFortsVolume,
+      soireesAmis: soireesAmis ?? this.soireesAmis,
+      appelsFrequents: appelsFrequents ?? this.appelsFrequents,
       logementQuartier: logementQuartier ?? this.logementQuartier,
       logementLoyerTotal: logementLoyerTotal ?? this.logementLoyerTotal,
       logementPartColoc: logementPartColoc ?? this.logementPartColoc,
       logementDescription: logementDescription ?? this.logementDescription,
       logementPhotos: logementPhotos ?? this.logementPhotos,
-      habitudesQuotidiennes:
-          habitudesQuotidiennes ?? this.habitudesQuotidiennes,
-      genreColocataireRecherche:
-          genreColocataireRecherche ?? this.genreColocataireRecherche,
+      genreColocataireRecherche: genreColocataireRecherche ?? this.genreColocataireRecherche,
+      habitudesQuotidiennes: habitudesQuotidiennes ?? this.habitudesQuotidiennes,
+      justificatifIdentiteUrl: justificatifIdentiteUrl ?? this.justificatifIdentiteUrl,
+      justificatifLoyerUrl: justificatifLoyerUrl ?? this.justificatifLoyerUrl,
+      justificatifBailUrl: justificatifBailUrl ?? this.justificatifBailUrl,
+      documentsUrls: documentsUrls ?? this.documentsUrls,
+      typeAnimaux: typeAnimaux ?? this.typeAnimaux,
       dateNaissance: dateNaissance ?? this.dateNaissance,
-      age: age ?? this.age,
+      age: age ?? this._ageParam,
+      aDejaUnLogement: aDejaUnLogement ?? this.aDejaUnLogementParam,
       dateInscription: dateInscription ?? this.dateInscription,
     );
   }

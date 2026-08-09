@@ -1,16 +1,14 @@
+import 'package:cloud_firestore/cloud_firestore.dart'; // Si tu en as besoin dans le fichier
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
 import 'package:mon_coloc/screens/etudiant/demandes_etudiant_screen.dart';
 import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
-/// Écran "Mon Profil" complet avec sections en accordéon.
-/// Utilisable à la fois par les Étudiants et les Bailleurs.
-/// Les sections spécifiques au matching (Section 2) ne s'affichent
-/// que pour le rôle 'etudiant'.
 class MonProfilScreen extends StatefulWidget {
   const MonProfilScreen({super.key});
 
@@ -21,7 +19,6 @@ class MonProfilScreen extends StatefulWidget {
 class _MonProfilScreenState extends State<MonProfilScreen> {
   final UserService _userService = UserService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final ImagePicker _picker = ImagePicker();
 
   // Contrôleurs de formulaire
   final _nomController = TextEditingController();
@@ -96,7 +93,20 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     _biographieController.text = user.biographie ?? '';
     _budgetController.text = user.budgetMaxFCFA.toStringAsFixed(0);
     _zoneRechercheController.text = user.zoneRecherche ?? '';
-    _typeLogement = user.typeLogement;
+
+    // Assurer que la valeur de _typeLogement est valide pour le Dropdown.
+    // Si user.typeLogement est une chaîne vide ou invalide, on la met à null.
+    final typesLogementValides = [
+      'Appartement',
+      'Studio',
+      'Chambre',
+      'Villa',
+      'Duplex',
+    ];
+    _typeLogement = typesLogementValides.contains(user.typeLogement)
+        ? user.typeLogement
+        : null;
+
     _fumeur = user.fumeur;
     _besoinSilence = user.besoinSilence;
     _proprete = user.proprete;
@@ -121,26 +131,6 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // ---------------------------------------------------------------------------
   // SÉLECTION & TÉLÉVERSEMENT PHOTO DE PROFIL
   // ---------------------------------------------------------------------------
-  Future<void> _choisirPhotoProfil() async {
-    try {
-      final XFile? image = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 80,
-      );
-
-      if (image == null) return;
-      await _televerserPhotoProfil(image);
-    } catch (e) {
-      debugPrint('Erreur sélection photo: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors de la sélection: $e')),
-        );
-      }
-    }
-  }
 
   Future<void> _televerserPhotoProfil(XFile image) async {
     final uid = _auth.currentUser?.uid;
@@ -197,72 +187,69 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // ---------------------------------------------------------------------------
   // SÉLECTION & TÉLÉVERSEMENT JUSTIFICATIF
   // ---------------------------------------------------------------------------
-  Future<void> _choisirJustificatif() async {
+  Future<void> _choisirEtTeleverserDocument(String nomChamp) async {
     try {
-      final XFile? doc = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 2048,
-        maxHeight: 2048,
-        imageQuality: 85,
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) return;
+
+      // Utiliser file_picker pour autoriser PDF et images
+      final resultat = await FilePicker.platform.pickFiles(
+        // ignore: use_build_context_synchronously
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+        withData: true, // Indispensable pour le Web
       );
 
-      if (doc == null) return;
-      await _televerserJustificatif(doc);
-    } catch (e) {
-      debugPrint('Erreur sélection justificatif: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors de la sélection: $e')),
-        );
+      if (resultat == null || resultat.files.single.name.isEmpty) return;
+
+      final fichier = resultat.files.single;
+
+      setState(() {
+        _televersementEnCours = true;
+        _messageTeleversement = 'Téléversement du document…';
+      });
+
+      // La nouvelle méthode gère la différence Web/Mobile
+      final url = await _userService.televerserJustificatifEtudiant(
+        uid: uid,
+        file: fichier,
+        nomChamp: nomChamp,
+      );
+
+      if (url.isEmpty) {
+        throw Exception("Le téléversement du fichier a échoué.");
       }
-    }
-  }
 
-  Future<void> _televerserJustificatif(XFile doc) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+      // Mettre à jour le champ correct dans Firestore
+      await _userService.mettreAJourPartiel(uid: uid, donnees: {nomChamp: url});
 
-    setState(() {
-      _televersementEnCours = true;
-      _messageTeleversement = 'Téléversement du justificatif…';
-    });
+      // Recharger les données pour rafraîchir l'UI
+      await _chargerDonnees();
 
-    try {
-      final url = await _userService.televerserJustificatif(
-        uid: uid,
-        docFile: doc,
-      );
-      // Mettre à jour Firestore
-      await _userService.mettreAJourPartiel(
-        uid: uid,
-        donnees: {'justificatifUrl': url},
-      );
-
-      // Recharger
-      final user = await _userService.recupererUtilisateur(uid);
       if (mounted) {
-        setState(() {
-          _utilisateur = user;
-          _televersementEnCours = false;
-          _messageTeleversement = null;
-        });
+        // ignore: use_build_context_synchronously
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Justificatif téléversé avec succès !'),
+            content: Text('Document téléversé avec succès !'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      debugPrint('Erreur téléversement justificatif: $e');
+      debugPrint('Erreur téléversement document: $e');
+      if (mounted) {
+        // ignore: use_build_context_synchronously
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors du téléversement: $e')),
+        );
+      }
+    } finally {
       if (mounted) {
         setState(() {
+          // Assure que l'overlay de chargement est toujours retiré
           _televersementEnCours = false;
-          _messageTeleversement = null;
+          _messageTeleversement = null; // Correction de la fin du bloc
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Erreur: $e')));
       }
     }
   }
@@ -377,22 +364,31 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                       elevation: 0,
                       color: const Color(0xFFE8F5E9),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: ListTile(
-                        leading: const Icon(Icons.assignment_turned_in_rounded,
-                            color: Color(0xFF1E6B4E)),
-                        title: const Text('Mes demandes de réservation',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        leading: const Icon(
+                          Icons.assignment_turned_in_rounded,
+                          color: Color(0xFF1E6B4E),
+                        ),
+                        title: const Text(
+                          'Mes demandes de réservation',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         subtitle: const Text(
-                            'Suivre mes réservations et payer les acomptes'),
-                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                            size: 16),
+                          'Suivre mes réservations et payer les acomptes',
+                        ),
+                        trailing: const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 16,
+                        ),
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) =>
-                                    const DemandesEtudiantScreen()),
+                              builder: (context) =>
+                                  const DemandesEtudiantScreen(),
+                            ),
                           );
                         },
                       ),
@@ -498,7 +494,17 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
               child: IconButton(
                 icon: const Icon(Icons.camera_alt_rounded, size: 22),
                 color: theme.colorScheme.onPrimary,
-                onPressed: _choisirPhotoProfil,
+                onPressed: () async {
+                  final picker = ImagePicker();
+                  final XFile? image = await picker.pickImage(
+                    source: ImageSource.gallery,
+                    maxWidth: 1024,
+                    maxHeight: 1024,
+                    imageQuality: 80,
+                  );
+                  if (image == null) return;
+                  await _televerserPhotoProfil(image);
+                },
                 tooltip: 'Modifier la photo de profil',
                 constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                 padding: EdgeInsets.zero,
@@ -740,7 +746,10 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
 
           // Niveau de propreté
           DropdownButtonFormField<Proprete>(
-            initialValue: _proprete,
+            // Assurer que la valeur existe dans les items pour éviter une assertion error.
+            value: Proprete.values.contains(_proprete)
+                ? _proprete
+                : Proprete.propre,
             decoration: InputDecoration(
               labelText: 'Niveau de propreté',
               prefixIcon: const Icon(Icons.cleaning_services_rounded),
@@ -748,6 +757,9 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
+            // La valeur initiale est gérée par `value`, donc `initialValue` n'est plus nécessaire.
+            // Si vous préférez `initialValue`, il faut aussi y mettre la logique de validation.
+            // initialValue: Proprete.values.contains(_proprete) ? _proprete : Proprete.propre,
             items: const [
               DropdownMenuItem(
                 value: Proprete.tresPropre,
@@ -876,7 +888,11 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   Widget _buildSectionSecuriteEtudiant(UserModel user) {
     final theme = Theme.of(context);
     const descriptionJustificatif =
-        'Carte d\'étudiant, reçu d\'inscription ou certificat de scolarité';
+        "votre carte d'étudiant ou certificat de scolarité.";
+
+    // Condition pour afficher les champs de justificatifs de logement
+    final bool doitAfficherJustificatifsLogement =
+        user.statutLogement == StatutLogement.aDejaUnLogement;
 
     return ExpansionTile(
       initiallyExpanded: true,
@@ -891,67 +907,41 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
       childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       children: [
         const Divider(),
-        const SizedBox(height: 8),
+        const SizedBox(height: 8), // Corrigé ici
         _buildBadgeVerifieEtudiant(user),
         const SizedBox(height: 16),
         const Divider(),
         const SizedBox(height: 12),
-        const Text(
-          'Documents justificatifs',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+
+        // --- Justificatif d'identité (toujours visible) ---
+        _buildJustificatifRow(
+          theme: theme,
+          label: "Justificatif d'identité",
+          description: descriptionJustificatif,
+          documentUrl: user.justificatifIdentiteUrl,
+          fieldName: 'justificatifIdentiteUrl',
         ),
-        const SizedBox(height: 4),
-        Text(
-          'En tant que Étudiant : $descriptionJustificatif',
-          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-        ),
-        const SizedBox(height: 12),
-        if (user.justificatifUrl != null) ...[
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.green.shade50,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: Colors.green.shade600,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                const Expanded(
-                  child: Text(
-                    'Justificatif téléversé',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
+
+        // --- Justificatifs de logement (visibles si l'étudiant a un logement) ---
+        if (doitAfficherJustificatifsLogement) ...[
+          const SizedBox(height: 16),
+          _buildJustificatifRow(
+            theme: theme,
+            label: "Quittance de loyer récente",
+            description: "La dernière quittance de votre logement actuel.",
+            documentUrl: user.justificatifLoyerUrl,
+            fieldName: 'justificatifLoyerUrl',
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          _buildJustificatifRow(
+            theme: theme,
+            label: "Contrat de bail ou reçu de caution",
+            description:
+                "Le contrat de location ou une preuve de paiement de la caution.",
+            documentUrl: user.justificatifBailUrl,
+            fieldName: 'justificatifBailUrl',
+          ),
         ],
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: _choisirJustificatif,
-            icon: const Icon(Icons.upload_file_rounded),
-            label: Text(
-              user.justificatifUrl != null
-                  ? 'Remplacer le justificatif'
-                  : 'Téléverser un justificatif',
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: theme.colorScheme.primary,
-              side: BorderSide(color: theme.colorScheme.primary),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -1048,6 +1038,77 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
               ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Construit une ligne réutilisable pour un justificatif (label, statut, bouton).
+  Widget _buildJustificatifRow({
+    required ThemeData theme,
+    required String label,
+    required String description,
+    required String? documentUrl,
+    required String fieldName,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          description,
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+        const SizedBox(height: 12),
+        if (documentUrl != null && documentUrl.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.green.shade600,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Document téléversé',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _choisirEtTeleverserDocument(fieldName),
+            icon: const Icon(Icons.upload_file_rounded),
+            label: Text(
+              (documentUrl != null && documentUrl.isNotEmpty)
+                  ? 'Remplacer le document'
+                  : 'Téléverser le document',
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: theme.colorScheme.primary,
+              side: BorderSide(color: theme.colorScheme.primary),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
           ),
         ),
       ],

@@ -133,8 +133,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
       final shouldUpdateUser =
           _currentUser == null ||
-          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) || //
-          _currentUser!.justificatifUrl != (data['justificatifUrl'] as String?);
+          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
+          _currentUser!.justificatifIdentiteUrl != (data['justificatifIdentiteUrl'] as String?);
 
       if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser) {
         setState(() {
@@ -309,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return user != null &&
         user.role == 'etudiant' &&
         !user.estVerifie &&
-        (user.justificatifUrl == null || user.justificatifUrl!.isEmpty);
+        (user.justificatifIdentiteUrl == null || user.justificatifIdentiteUrl!.isEmpty);
   }
 
   Widget _buildVerificationAlert() {

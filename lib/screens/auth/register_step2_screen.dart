@@ -3,9 +3,12 @@
 // Si "J'ai déjà un logement" : Quartier/Zone, Loyer total, Part loyer, Description
 // Le sexe et la mixité ont été déplacés vers l'Étape 3
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mon_coloc/models/user_model.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class RegisterStep2Screen extends StatefulWidget {
   final void Function({
@@ -17,6 +20,7 @@ class RegisterStep2Screen extends StatefulWidget {
     double? logementLoyerTotal,
     double? logementPartColoc,
     String? logementDescription,
+    List<XFile>? logementPhotos,
   }) onSuivant;
 
   final VoidCallback onRetour;
@@ -42,6 +46,12 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
   final _logementLoyerTotalCtrl = TextEditingController();
   final _logementPartColocCtrl = TextEditingController();
   final _logementDescriptionCtrl = TextEditingController();
+
+  // Ajout pour la sélection de photos
+  final ImagePicker _picker = ImagePicker();
+  List<XFile> _selectedPhotos = [];
+  static const int _maxPhotos = 5;
+
 
   StatutLogement? _statutChoisi;
 
@@ -103,6 +113,7 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
     _logementLoyerTotalCtrl.dispose();
     _logementPartColocCtrl.dispose();
     _logementDescriptionCtrl.dispose();
+
     super.dispose();
   }
 
@@ -121,6 +132,13 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
         );
         return;
       }
+    } else if (_statutChoisi == StatutLogement.aDejaUnLogement) {
+      if (_selectedPhotos.isEmpty) {
+        _afficherErreur(
+          'Veuillez ajouter au moins une photo de votre logement.',
+        );
+        return;
+      }
     }
 
     final quartiers =
@@ -135,6 +153,7 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
         logementLoyerTotal: double.tryParse(_logementLoyerTotalCtrl.text.trim()),
         logementPartColoc: double.tryParse(_logementPartColocCtrl.text.trim()),
         logementDescription: _logementDescriptionCtrl.text.trim(),
+        logementPhotos: _selectedPhotos,
       );
     } else {
       widget.onSuivant(
@@ -171,6 +190,48 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
       if (_indifferent) {
         _quartiersSelectionnes.clear();
       }
+    });
+  }
+
+  /// Ouvre la galerie pour sélectionner des photos.
+  Future<void> _ajouterPhotos() async {
+    if (_selectedPhotos.length >= _maxPhotos) {
+      _afficherErreur('Vous ne pouvez ajouter que $_maxPhotos photos au maximum.');
+      return;
+    }
+
+    try {
+      final images = await _picker.pickMultiImage(
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80,
+      );
+
+      if (images.isEmpty) return;
+
+      // Limiter le nombre total de photos
+      final int remainingSlots = _maxPhotos - _selectedPhotos.length;
+      final List<XFile> newImages =
+          images.take(remainingSlots).toList();
+
+      setState(() {
+        _selectedPhotos.addAll(newImages);
+      });
+
+      if (images.length > remainingSlots) {
+        _afficherErreur(
+          'Limite de $_maxPhotos photos atteinte. Seules les premières ont été ajoutées.',
+        );
+      }
+    } catch (e) {
+      _afficherErreur('Erreur lors de la sélection des photos : $e');
+    }
+  }
+
+  /// Supprime une photo de la liste des photos sélectionnées.
+  void _supprimerPhoto(int index) {
+    setState(() {
+      _selectedPhotos.removeAt(index);
     });
   }
 
@@ -535,7 +596,42 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
         },
       ),
       const SizedBox(height: 28),
+
+      // ---- Section Photos du logement ----
+      _sectionLabel(
+        theme,
+        'Photos du logement *',
+        'Ajoutez entre 1 et 5 photos de votre logement.',
+      ),
+      const SizedBox(height: 12),
+      _buildPhotoPicker(theme),
+      if (_selectedPhotos.isNotEmpty) _buildPhotoPreview(),
+      const SizedBox(height: 28),
     ];
+  }
+
+  Widget _sectionLabel(ThemeData theme, String title, String subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colorScheme.onSurface,
+          ),
+        ),
+        if (subtitle.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -768,6 +864,129 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
       ),
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+    );
+  }
+
+  /// Widget pour le sélecteur de photos.
+  Widget _buildPhotoPicker(ThemeData theme) {
+    final hasPhotos = _selectedPhotos.isNotEmpty;
+    final color = hasPhotos ? const Color(0xFF1E6B4E) : Colors.grey;
+
+    return InkWell(
+      onTap: _ajouterPhotos,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: color.withOpacity(0.3),
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              hasPhotos ? Icons.add_photo_alternate_rounded : Icons.add_a_photo_rounded,
+              size: 28,
+              color: color,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              hasPhotos ? 'Ajouter d\'autres photos' : 'Ajouter des photos',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Widget pour afficher les miniatures des photos sélectionnées.
+  Widget _buildPhotoPreview() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 12,
+        children: List.generate(
+          _selectedPhotos.length,
+          (index) => _buildPhotoChip(index),
+        ),
+      ),
+    );
+  }
+
+  /// Une seule miniature de photo avec un bouton de suppression.
+  Widget _buildPhotoChip(int index) {
+    final file = _selectedPhotos[index];
+
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: kIsWeb
+              ? Image.network(
+                  file.path,
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+              return Container(
+                width: 80,
+                height: 80,
+                color: Colors.grey.shade200,
+                child: const Icon(Icons.broken_image, color: Colors.grey),
+              );
+            },
+                )
+              : Image.file(
+                  File(file.path),
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: 80,
+                      height: 80,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image, color: Colors.grey),
+                    );
+                  },
+                ),
+        ),
+        Positioned(
+          top: -8,
+          right: -8,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () => _supprimerPhoto(index),
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  shape: BoxShape.circle,
+                ),
+                padding: const EdgeInsets.all(4),
+                child: const Icon(
+                  Icons.close,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

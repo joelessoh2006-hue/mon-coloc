@@ -123,7 +123,7 @@ class AdminService {
     return _usersCollection
         .where('role', isEqualTo: 'etudiant')
         .where('estVerifie', isEqualTo: false)
-        .where('justificatifUrl', isNotEqualTo: '')
+        .where('justificatifIdentiteUrl', isNotEqualTo: null)
         .snapshots();
   }
 
@@ -132,7 +132,7 @@ class AdminService {
     return await _usersCollection
         .where('role', isEqualTo: 'etudiant')
         .where('estVerifie', isEqualTo: false)
-        .where('justificatifUrl', isNotEqualTo: '')
+        .where('justificatifIdentiteUrl', isNotEqualTo: null)
         .get();
   }
 

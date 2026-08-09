@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:html' as html;
 import '../../services/admin_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/user_service.dart';
@@ -288,6 +290,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     data: data,
                     onVerifier: _confirmerVerificationEtudiant,
                     onBloquerDebloquer: _confirmerBlocageDeblocage,
+                    onAfficherJustificatifs: () => _afficherJustificatifsEtudiant(data),
                     onAfficherJustificatif: _afficherJustificatif,
                   );
                 },
@@ -887,47 +890,128 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
-  /// Affiche un document justificatif en plein écran.
+ /// Affiche un document justificatif (Base64 ou URL) directement dans une modale.
   void _afficherJustificatif(String url) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('Document justificatif')),
-          body: InteractiveViewer(
+    if (url.isEmpty) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📄 Aperçu du document'),
+        content: SizedBox(
+          width: 500,
+          height: 500,
+          child: InteractiveViewer(
             child: Center(
               child: Builder(
                 builder: (_) {
-                  Uint8List? bytes;
-                  try {
-                    if (url.startsWith('data:image')) {
-                      final base64Part = url.split(',').last;
-                      bytes = base64Decode(base64Part);
+                  // Cas d'un fichier encodé en Base64 (Data URL)
+                  if (url.startsWith('data:')) {
+                    try {
+                      final base64Data = url.contains(',') ? url.split(',').last : url;
+                      final bytes = base64Decode(base64Data.trim());
+
+                      if (url.contains('application/pdf')) {
+                        return const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
+                            SizedBox(height: 12),
+                            Text('Document PDF enregistré avec succès.'),
+                            Text('(Aperçu PDF indisponible directement dans la modale)', 
+                                 style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          ],
+                        );
+                      }
+
+                      return Image.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Text('Format d\'image non supporté'),
+                      );
+                    } catch (e) {
+                      return Text('Erreur de décodage : $e');
                     }
-                  } catch (_) {
-                    bytes = null;
                   }
 
-                  if (bytes != null) {
-                    return Image.memory(bytes);
-                  }
-
-                  // Fallback pour les anciennes URLs de Firebase Storage
+                  // Cas d'une URL classique
                   return Image.network(
                     url,
-                    errorBuilder: (_, _, _) => const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.broken_image_rounded, size: 48),
-                        SizedBox(height: 8),
-                        Text('Impossible d\'afficher le document'),
-                      ],
-                    ),
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text('Impossible d\'afficher l\'image distante'),
                   );
                 },
               ),
             ),
           ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+  /// Affiche une boîte de dialogue listant les justificatifs d'un étudiant.
+  void _afficherJustificatifsEtudiant(Map<String, dynamic> userData) {
+    final justificatifIdentiteUrl = userData['justificatifIdentiteUrl'] as String?;
+    final justificatifLoyerUrl = userData['justificatifLoyerUrl'] as String?;
+    final justificatifBailUrl = userData['justificatifBailUrl'] as String?;
+
+    final documents = {
+      'Justificatif d\'identité': justificatifIdentiteUrl,
+      'Quittance de loyer': justificatifLoyerUrl,
+      'Contrat de bail': justificatifBailUrl,
+    };
+
+    // Filtrer les documents qui existent réellement
+    final documentsDisponibles = Map.fromEntries(
+      documents.entries.where((e) => e.value != null && e.value!.isNotEmpty),
+    );
+
+    if (documentsDisponibles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cet étudiant n\'a téléversé aucun justificatif.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📄 Justificatifs de l\'étudiant'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: documentsDisponibles.length,
+            separatorBuilder: (context, index) => const Divider(),
+            itemBuilder: (context, index) {
+              final entry = documentsDisponibles.entries.elementAt(index);
+              final titre = entry.key;
+              final url = entry.value;
+
+              return ListTile(
+                title: Text(titre),
+                trailing: OutlinedButton(
+                  onPressed: () => _afficherJustificatif(url!),
+                  child: const Text('Visualiser'),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fermer'),
+          ),
+        ],
       ),
     );
   }

@@ -62,12 +62,12 @@ class _RegisterBailleurDocsScreenState
 
   Future<void> _pickerFichier(int index) async {
     try {
-      final result = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-        withData: true, // Important pour obtenir les bytes (compatible Web)
-      );
-
+      // Remplace FilePicker.platform.pickFiles par :
+final result = await FilePicker.platform.pickFiles(
+  type: FileType.custom,
+  allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+  withData: true,
+);
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         final bytes = file.bytes;

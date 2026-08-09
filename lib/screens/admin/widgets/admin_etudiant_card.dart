@@ -8,6 +8,7 @@ class AdminEtudiantCard extends StatelessWidget {
   final Function(String, bool) onVerifier;
   final Function(String, String, String, bool) onBloquerDebloquer;
   final Function(String) onAfficherJustificatif;
+  final VoidCallback onAfficherJustificatifs;
 
   const AdminEtudiantCard({
     super.key,
@@ -16,6 +17,7 @@ class AdminEtudiantCard extends StatelessWidget {
     required this.onVerifier,
     required this.onBloquerDebloquer,
     required this.onAfficherJustificatif,
+    required this.onAfficherJustificatifs,
   });
 
   @override
@@ -180,6 +182,18 @@ class AdminEtudiantCard extends StatelessWidget {
               const SizedBox(height: 16),
               const Divider(height: 1),
               const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onAfficherJustificatifs,
+                  icon: const Icon(Icons.description_rounded, size: 18),
+                  label: const Text('Voir les justificatifs'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
