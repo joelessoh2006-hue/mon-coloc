@@ -296,29 +296,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
-
-              // Bouton Gérer mes loyers
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const MesLoyersScreen(),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.payment_rounded),
-                  label: const Text('Gérer mes loyers et paiements'),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-
+ 
               // Avertissement si aucune photo
               if (!hasPhotos && !_televersementEnCours)
                 Container(
