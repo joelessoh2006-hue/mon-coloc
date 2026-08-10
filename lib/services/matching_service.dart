@@ -28,6 +28,30 @@ class MatchingService {
     }
     final currentUser = UserModel.fromFirestore(currentUserDoc);
 
+    // 2. Récupérer les IDs des étudiants déjà en équipe ou en recherche active
+    final Set<String> membresInTeams = {};
+    final conversationsCollection =
+        FirebaseFirestore.instance.collection('conversations');
+
+    // Équipes validées
+    final acceptedTeamsSnapshot =
+        await conversationsCollection.where('demandeStatut', isEqualTo: 'accepte').get();
+    for (final doc in acceptedTeamsSnapshot.docs) {
+      final data = doc.data();
+      final membres = List<String>.from(data['membres'] ?? []);
+      membresInTeams.addAll(membres);
+    }
+
+    // Équipes en recherche active
+    final searchingTeamsSnapshot = await conversationsCollection
+        .where('rechercheColocActive', isEqualTo: true)
+        .get();
+    for (final doc in searchingTeamsSnapshot.docs) {
+      final data = doc.data();
+      final membres = List<String>.from(data['membres'] ?? []);
+      membresInTeams.addAll(membres);
+    }
+
     // 2. Récupérer tous les étudiants vérifiés
     final querySnapshot = await _usersCollection
         .where('role', isEqualTo: 'etudiant')
@@ -40,6 +64,9 @@ class MatchingService {
     for (final doc in querySnapshot.docs) {
       // Exclure l'utilisateur connecté
       if (doc.id == currentUserId) continue;
+
+      // Exclure les étudiants déjà en équipe
+      if (membresInTeams.contains(doc.id)) continue;
 
       // Appliquer le filtre optionnel sur aDejaUnLogement
       // Utilisation sécurisée : on vérifie d'abord si le champ existe via data()

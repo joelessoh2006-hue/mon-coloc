@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
@@ -20,6 +21,7 @@ class MonLogementScreen extends StatefulWidget {
 class _MonLogementScreenState extends State<MonLogementScreen> {
   final UserService _userService = UserService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _picker = ImagePicker();
 
   UserModel? _utilisateur;
@@ -35,9 +37,23 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
   bool _sauvegardeEnCours = false;
   bool _modificationActive = false;
 
-  /// Indique si l'utilisateur est vérifié. Si non, l'accès est bloqué.
-  bool _estVerifie = false;
+  /// Indique si on affiche le logement du coéquipier.
+  bool _afficheLogementCoequipier = false;
 
+  // --- NOUVEAU : Répartition du loyer ---
+  /// ID de la conversation de l'équipe
+  String? _conversationId;
+  /// Nombre de membres dans l'équipe
+  int _nombreMembresEquipe = 1;
+  /// Mode de répartition ('equitable' ou 'custom')
+  bool _repartitionEquitable = true;
+  /// Contrôleur pour la part fixe du candidat en mode custom
+  final _partFixeCandidatController = TextEditingController();
+
+  /// Prénom du coéquipier si on affiche son logement.
+  String? _prenomCoequipier;
+
+  /// UID du coéquipier si on affiche son logement.
   @override
   void initState() {
     super.initState();
@@ -50,6 +66,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
     _loyerTotalController.dispose();
     _partColocController.dispose();
     _descriptionController.dispose();
+    _partFixeCandidatController.dispose();
     super.dispose();
   }
 
@@ -60,32 +77,93 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
       return;
     }
 
-    // Écouter en temps réel les changements
-    _userService.ecouterUtilisateur(uid).listen((user) {
-      if (mounted) {
-        setState(() {
-          _estVerifie = user?.estVerifie ?? false;
+    final userDoc = await _userService.recupererUtilisateurDoc(uid);
+    if (!mounted || userDoc == null) return;
 
-          // Si l'utilisateur n'est pas vérifié, on ne le laisse pas accéder à la page.
-          if (!_estVerifie) {
-            _chargement = false;
-            // Redirection après la construction de la frame actuelle.
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                Navigator.of(context).pushReplacement(
-                  MaterialPageRoute(builder: (_) => const MonProfilScreen()),
-                );
-              }
-            });
-          }
-          _utilisateur = user;
+    final currentUser = UserModel.fromFirestore(userDoc);
+
+    // Cas 1 : L'utilisateur a déjà un logement. On affiche ses propres infos.
+    if (currentUser.aDejaUnLogement) {
+      setState(() {
+        _utilisateur = currentUser;
+        _afficheLogementCoequipier = false;
+        _chargement = false;
+        _initialiserChamps(currentUser);
+        _chargerInfosEquipe(uid); // Charger aussi les infos de l'équipe
+      });
+    }
+    // Cas 2 : L'utilisateur n'a pas de logement, on cherche celui du coéquipier.
+    else {
+      final coequipier = await _trouverCoequipierAvecLogement(uid);
+      if (coequipier != null) {
+        setState(() {
+          _utilisateur = coequipier; // On affiche les données du coéquipier
+          _prenomCoequipier = coequipier.prenom;
+          _afficheLogementCoequipier = true;
           _chargement = false;
-          if (user != null) {
-            _initialiserChamps(user);
+          _initialiserChamps(coequipier);
+          _chargerInfosEquipe(uid); // Charger aussi les infos de l'équipe
+        });
+      } else {
+        // Aucun coéquipier avec logement trouvé, on affiche l'interface standard.
+        setState(() {
+          _utilisateur = currentUser;
+          _afficheLogementCoequipier = false;
+          _chargement = false;
+          if (currentUser != null) {
+            _initialiserChamps(currentUser);
+            _chargerInfosEquipe(uid);
           }
         });
       }
+    }
+  }
+
+  /// Cherche un coéquipier avec un logement dans une équipe validée.
+  Future<UserModel?> _trouverCoequipierAvecLogement(String currentUserUid) async {
+    final query = await _firestore
+        .collection('conversations')
+        .where('membres', arrayContains: currentUserUid)
+        .where('demandeStatut', isEqualTo: 'accepte')
+        .limit(1)
+        .get();
+
+    if (query.docs.isEmpty) return null;
+
+    final conversation = query.docs.first;
+    final membres = List<String>.from(conversation.data()['membres'] ?? []);
+    final autreMembreUid = membres.firstWhere((id) => id != currentUserUid, orElse: () => '');
+
+    return await _userService.recupererUtilisateur(autreMembreUid);
+  }
+
+  /// Charge les informations de l'équipe (ID conversation, membres, répartition).
+  Future<void> _chargerInfosEquipe(String currentUserUid) async {
+    final query = await _firestore
+        .collection('conversations')
+        .where('membres', arrayContains: currentUserUid)
+        .where('demandeStatut', isEqualTo: 'accepte')
+        .limit(1)
+        .get();
+
+    if (query.docs.isEmpty || !mounted) return;
+
+    final doc = query.docs.first;
+    final data = doc.data();
+    final membres = List<String>.from(data['membres'] ?? []);
+
+    setState(() {
+      _conversationId = doc.id;
+      _nombreMembresEquipe = membres.length;
+
+      final modeRepartition = data['modeRepartition'] as String?;
+      _repartitionEquitable = modeRepartition != 'custom';
+
+      final partFixe = data['partFixeCandidat'] as num?;
+      _partFixeCandidatController.text = partFixe?.toStringAsFixed(0) ?? '';
     });
+
+    _partFixeCandidatController.addListener(() => setState(() {}));
   }
 
   void _initialiserChamps(UserModel user) {
@@ -203,10 +281,10 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
   /// Sauvegarder les modifications des infos logement
   Future<void> _sauvegarderInfos() async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return;
+    final uid = _auth.currentUser?.uid; 
+    if (uid == null || _conversationId == null) return;
 
-    setState(() => _sauvegardeEnCours = true);
+    setState(() => _sauvegardeEnCours = true); 
 
     try {
       await _userService.mettreAJourPartiel(
@@ -220,6 +298,21 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
           'logementDescription': _descriptionController.text.trim(),
         },
       );
+
+      // --- NOUVEAU : Sauvegarde des infos de répartition dans la conversation ---
+      final partFixe = int.tryParse(_partFixeCandidatController.text.trim()) ?? 0;
+      final loyerTotal = double.tryParse(_loyerTotalController.text.trim()) ?? 0;
+      final partSuggeree = _calculerEtArrondirPartSuggeree(loyerTotal);
+
+      await _firestore.collection('conversations').doc(_conversationId!).update({
+        'modeRepartition': _repartitionEquitable ? 'equitable' : 'custom',
+        'partFixeCandidat': _repartitionEquitable ? partSuggeree : partFixe,
+        'logementQuartier': _quartierController.text.trim(),
+      });
+
+      // Recharger les données pour refléter les changements
+      await _chargerDonnees();
+      // Fin de la nouvelle partie
 
       if (mounted) {
         setState(() {
@@ -242,6 +335,16 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
     }
   }
 
+  /// Calcule la part suggérée et l'arrondit au 500 FCFA supérieur.
+  int _calculerEtArrondirPartSuggeree(double loyerTotal) {
+    if (loyerTotal <= 0) return 0;
+    // On calcule la part pour l'équipe actuelle + 1 nouveau membre
+    final nbTotalPersonnes = _nombreMembresEquipe + 1;
+    final partBrute = loyerTotal / nbTotalPersonnes;
+    // Arrondi au 500 FCFA supérieur (ex: 33333 -> 33500)
+    return (partBrute / 500).ceil() * 500;
+  }
+
   void _afficherErreur(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -258,12 +361,6 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
     if (_chargement) {
       return const Center(child: CircularProgressIndicator());
-    }
-
-    // Si l'utilisateur n'est pas vérifié, on affiche un état intermédiaire
-    // avant la redirection pour éviter les erreurs de build.
-    if (!_estVerifie) {
-      return const Center(child: Text('Vérification du statut...'));
     }
 
     final user = _utilisateur;
@@ -283,16 +380,16 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Titre
-              Text(
-                'Mon Logement',
+              Text( 
+                _afficheLogementCoequipier ? 'Notre Logement' : 'Mon Logement',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                   color: const Color(0xFF1E3A5F),
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                'Gérez votre annonce et ses photos',
+              Text( 
+                _afficheLogementCoequipier ? 'Consultez les informations du logement de votre équipe.' : 'Gérez votre annonce et ses photos',
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
@@ -332,6 +429,36 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 ),
               if (!hasPhotos && !_televersementEnCours)
                 const SizedBox(height: 24),
+              
+              // Badge d'information si on affiche le logement du coéquipier
+              if (_afficheLogementCoequipier && _prenomCoequipier != null)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 24),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: theme.colorScheme.primary.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline_rounded, color: theme.colorScheme.primary, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Vous consultez le logement de $_prenomCoequipier.',
+                          style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
 
               // Overlay de téléversement
               if (_televersementEnCours)
@@ -457,28 +584,39 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                       ),
                       const SizedBox(height: 16),
                     ],
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _ajouterPhoto,
-                        icon: const Icon(Icons.add_photo_alternate_rounded),
-                        label: Text(
-                          hasPhotos
-                              ? 'Ajouter une photo'
-                              : 'Uploader des photos',
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    if (!_afficheLogementCoequipier)
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _ajouterPhoto,
+                          icon: const Icon(Icons.add_photo_alternate_rounded),
+                          label: Text(
+                            hasPhotos
+                                ? 'Ajouter une photo'
+                                : 'Uploader des photos',
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
+
+              // --- NOUVEAU : Section Répartition du Loyer ---
+              if (user.aDejaUnLogement) ...[
+                _buildSectionRepartition(theme),
+                const SizedBox(height: 16),
+              ],
+              if (_afficheLogementCoequipier) ...[
+                _buildSectionRepartition(theme),
+                const SizedBox(height: 16),
+              ],
 
               // --- Section Infos du logement ---
               _buildSection(
@@ -490,7 +628,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Quartier
                     TextField(
                       controller: _quartierController,
-                      enabled: _modificationActive,
+                      enabled: _modificationActive && !_afficheLogementCoequipier,
                       decoration: InputDecoration(
                         labelText: 'Quartier / Zone',
                         prefixIcon: const Icon(Icons.location_on_rounded),
@@ -504,7 +642,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Loyer total
                     TextField(
                       controller: _loyerTotalController,
-                      enabled: _modificationActive,
+                      enabled: _modificationActive && !_afficheLogementCoequipier,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Loyer total (FCFA)',
@@ -519,7 +657,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Part coloc
                     TextField(
                       controller: _partColocController,
-                      enabled: _modificationActive,
+                      enabled: _modificationActive && !_afficheLogementCoequipier,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Part du colocataire (FCFA)',
@@ -534,7 +672,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Description
                     TextField(
                       controller: _descriptionController,
-                      enabled: _modificationActive,
+                      enabled: _modificationActive && !_afficheLogementCoequipier,
                       maxLines: 3,
                       maxLength: 500,
                       textCapitalization: TextCapitalization.sentences,
@@ -549,87 +687,88 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     ),
                     const SizedBox(height: 16),
 
-                    // Boutons Modifier / Sauvegarder
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _modificationActive
-                              ? FilledButton.icon(
-                                  onPressed: _sauvegardeEnCours
-                                      ? null
-                                      : _sauvegarderInfos,
-                                  icon: _sauvegardeEnCours
-                                      ? const SizedBox(
-                                          width: 18,
-                                          height: 18,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.save_rounded,
-                                          size: 18,
-                                        ),
-                                  label: Text(
-                                    _sauvegardeEnCours
-                                        ? 'Sauvegarde…'
-                                        : 'Enregistrer',
-                                  ),
-                                  style: FilledButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                )
-                              : OutlinedButton.icon(
-                                  onPressed: () => setState(
-                                    () => _modificationActive = true,
-                                  ),
-                                  icon: const Icon(
-                                    Icons.edit_rounded,
-                                    size: 18,
-                                  ),
-                                  label: const Text('Modifier'),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 14,
-                                    ),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                ),
-                        ),
-                        if (_modificationActive) ...[
-                          const SizedBox(width: 12),
+                    // Boutons Modifier / Sauvegarder (uniquement si ce n'est pas le logement du coéquipier)
+                    if (!_afficheLogementCoequipier)
+                      Row(
+                        children: [
                           Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _modificationActive = false;
-                                  _initialiserChamps(user);
-                                });
-                              },
-                              icon: const Icon(Icons.close_rounded, size: 18),
-                              label: const Text('Annuler'),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.red,
-                                side: const BorderSide(color: Colors.red),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                            child: _modificationActive
+                                ? FilledButton.icon(
+                                    onPressed: _sauvegardeEnCours
+                                        ? null
+                                        : _sauvegarderInfos,
+                                    icon: _sauvegardeEnCours
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.save_rounded,
+                                            size: 18,
+                                          ),
+                                    label: Text(
+                                      _sauvegardeEnCours
+                                          ? 'Sauvegarde…'
+                                          : 'Enregistrer',
+                                    ),
+                                    style: FilledButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  )
+                                : OutlinedButton.icon(
+                                    onPressed: () => setState(
+                                      () => _modificationActive = true,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.edit_rounded,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Modifier'),
+                                    style: OutlinedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 14,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                          if (_modificationActive) ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _modificationActive = false;
+                                    _initialiserChamps(user);
+                                  });
+                                },
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                label: const Text('Annuler'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ],
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),
@@ -685,6 +824,109 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             child: child,
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Construit la section pour la répartition du loyer.
+  Widget _buildSectionRepartition(ThemeData theme) {
+    final loyerTotal = double.tryParse(_loyerTotalController.text.trim()) ?? 0;
+    final partSuggeree = _calculerEtArrondirPartSuggeree(loyerTotal);
+    final estEnLectureSeule = _afficheLogementCoequipier;
+
+    return _buildSection(
+      theme: theme,
+      icon: Icons.payments_rounded,
+      title: 'Répartition du Loyer',
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text(
+              'Répartition équitable',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Le loyer est divisé par le nombre de colocataires.',
+            ),
+            value: _repartitionEquitable,
+            onChanged: estEnLectureSeule
+                ? null
+                : (value) {
+                    setState(() => _repartitionEquitable = value);
+                  },
+            activeColor: theme.colorScheme.primary,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 12),
+          if (_repartitionEquitable)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Part suggérée pour le candidat :',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${partSuggeree.toStringAsFixed(0)} FCFA',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Part sur-mesure pour le candidat',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _partFixeCandidatController,
+                  enabled: !estEnLectureSeule,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Montant fixe (FCFA)',
+                    prefixIcon: const Icon(Icons.edit_note_rounded),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          if (estEnLectureSeule) ...[
+            const SizedBox(height: 12),
+            Text(
+              "Seul le titulaire du logement peut modifier ces réglages.",
+              style: TextStyle(
+                fontSize: 12,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ],
         ],
       ),
     );

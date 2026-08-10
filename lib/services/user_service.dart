@@ -39,6 +39,13 @@ class UserService {
     return UserModel.fromFirestore(doc);
   }
 
+  /// Récupère le DocumentSnapshot d'un utilisateur par son UID.
+  Future<DocumentSnapshot?> recupererUtilisateurDoc(String uid) async {
+    final doc = await _usersCollection.doc(uid).get();
+    if (!doc.exists) return null;
+    return doc;
+  }
+
   /// Écoute en temps réel les changements d'un utilisateur.
   Stream<UserModel?> ecouterUtilisateur(String uid) {
     return _usersCollection.doc(uid).snapshots().map((doc) {

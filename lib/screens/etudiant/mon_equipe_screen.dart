@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/screens/chat_screen.dart';
 import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
+import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/services/chat_service.dart';
+import 'package:mon_coloc/services/matching_service.dart';
 import 'package:mon_coloc/services/equipe_service.dart';
 
 /// Écran "Mon Équipe" — Gestion de la colocation étudiante.
@@ -26,7 +28,9 @@ class MonEquipeScreen extends StatefulWidget {
 class _MonEquipeScreenState extends State<MonEquipeScreen> {
   final ChatService _chatService = ChatService();
   final EquipeService _equipeService = EquipeService();
+  final UserService _userService = UserService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final MatchingService _matchingService = MatchingService();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Cache des infos utilisateur (uid -> Map)
@@ -346,6 +350,18 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
                 ],
               ),
             ),
+
+            // --- NOUVEAU : Widget de sondage pour la recherche de coloc ---
+            // S'affiche uniquement pour un binôme (2 membres)
+            if (membres.length == 2) ...[
+              const SizedBox(height: 24),
+              SondageColocWidget(
+                  conversationId: conversationId, membres: membres), // Ajout de la virgule
+            ],
+            const SizedBox(height: 24),
+            _CandidaturesRecuesWidget(
+                conversationId: conversationId, membres: membres),
+            // ], // Parenthèse fermante déplacée
 
             const SizedBox(height: 24),
 
@@ -842,6 +858,470 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
       MaterialPageRoute(
         builder: (_) => ProfileDetailScreen(userData: userData),
       ),
+    );
+  }
+}
+
+/// Widget pour afficher et gérer les candidatures reçues.
+class _CandidaturesRecuesWidget extends StatelessWidget {
+  final String conversationId;
+  final List<String> membres;
+
+  const _CandidaturesRecuesWidget({
+    required this.conversationId,
+    required this.membres,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const SizedBox.shrink();
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final allCandidatures =
+            data['candidatures'] as Map<String, dynamic>? ?? {};
+
+        final candidaturesEnAttente = allCandidatures.entries
+            .where((e) => e.value['statut'] == 'en_attente')
+            .toList();
+
+        if (candidaturesEnAttente.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Divider(height: 32),
+            const Text(
+              'Candidatures reçues',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1E3A5F),
+              ),
+            ),
+            const SizedBox(height: 12),
+            ...candidaturesEnAttente
+                .map((c) => _buildCandidatCard(context, c.key, c.value))
+                ,
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCandidatCard(
+      BuildContext context, String candidatId, Map<String, dynamic> data) {
+    final message = data['message'] as String? ?? 'Aucun message.';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.teal.shade100),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance.collection('users').doc(candidatId).get(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData || !snapshot.data!.exists) return const LinearProgressIndicator();
+                final candidatData = snapshot.data!.data() as Map<String, dynamic>;
+                final prenom = candidatData['prenom'] as String? ?? 'Candidat';
+                final photoUrl = candidatData['photoUrl'] as String?;
+                final score = candidatData['scoreMatching'] as int? ?? 0;
+
+                return Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundImage:
+                          photoUrl != null ? NetworkImage(photoUrl) : null,
+                      child: photoUrl == null ? Text(prenom[0]) : null,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        prenom,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    Text('Match: $score%',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary)),
+                  ],
+                );
+              },
+            ),
+            const Divider(height: 24),
+            Text(
+              'Message de motivation :',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 4),
+            Text(message.isNotEmpty ? '"$message"' : 'Aucun message.'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _gererCandidature(context, candidatId, false),
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    label: const Text('Refuser'),
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _gererCandidature(context, candidatId, true),
+                    icon: const Icon(Icons.check_rounded, size: 18),
+                    label: const Text('Accepter'),
+                    style: FilledButton.styleFrom(
+                        backgroundColor: Colors.green.shade700),
+                  ),
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _gererCandidature(
+      BuildContext context, String candidatId, bool accepter) async {
+    try {
+      final docRef =
+          FirebaseFirestore.instance.collection('conversations').doc(conversationId);
+
+      if (accepter) {
+        // 1. Ajouter le membre à la conversation
+        await docRef.update({
+          'membres': FieldValue.arrayUnion([candidatId]),
+          'candidatures.$candidatId.statut': 'accepte',
+        });
+
+        // 2. Mettre à jour le profil du candidat
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(candidatId)
+            .update({'aUneEquipe': true}); // Champ simple pour le moment
+      } else {
+        // Refuser
+        await docRef.update({'candidatures.$candidatId.statut': 'refuse'});
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Candidature ${accepter ? 'acceptée' : 'refusée'} avec succès.'),
+            backgroundColor: accepter ? Colors.green : Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+}
+
+/// Widget pour gérer le sondage de recherche de colocataires.
+class SondageColocWidget extends StatefulWidget {
+  final String conversationId;
+  final List<String> membres;
+
+  const SondageColocWidget({
+    super.key,
+    required this.conversationId,
+    required this.membres,
+  });
+
+  @override
+  State<SondageColocWidget> createState() => _SondageColocWidgetState();
+}
+
+class _SondageColocWidgetState extends State<SondageColocWidget> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final String _currentUid = FirebaseAuth.instance.currentUser!.uid;
+  bool _voteEnCours = false;
+  bool _relanceEnCours = false;
+
+  Future<void> _voter(String vote) async {
+    if (_voteEnCours) return;
+    setState(() => _voteEnCours = true);
+
+    try {
+      final docRef =
+          _firestore.collection('conversations').doc(widget.conversationId);
+      await docRef.update({'sondageRecherche.votes.$_currentUid': vote});
+
+      // Après le vote, vérifier si tout le monde a voté pour traiter le résultat
+      final doc = await docRef.get();
+      final data = doc.data() as Map<String, dynamic>?;
+      if (data != null) {
+        await _traiterResultatSondage(docRef, data);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erreur lors du vote: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _voteEnCours = false);
+      }
+    }
+  }
+
+  Future<void> _traiterResultatSondage(
+      DocumentReference docRef, Map<String, dynamic> data) async {
+    final sondageData = data['sondageRecherche'] as Map<String, dynamic>? ?? {};
+    final votes = sondageData['votes'] as Map<String, dynamic>? ?? {};
+
+    if (votes.keys.length == 2) {
+      // Tout le monde a voté
+      final tousOui = votes.values.every((vote) => vote == 'oui');
+
+      if (tousOui) {
+        await docRef.update({
+          'rechercheColocActive': true,
+          'sondageRecherche.estActif': false,
+        });
+      } else {
+        await docRef.update({
+          'rechercheColocActive': false,
+          'sondageRecherche.estActif': false,
+        });
+      }
+    }
+  }
+
+  Future<void> _relancerSondage() async {
+    if (_relanceEnCours) return;
+    setState(() => _relanceEnCours = true);
+
+    try {
+      final docRef =
+          _firestore.collection('conversations').doc(widget.conversationId);
+      await docRef.update({
+        'sondageRecherche': {
+          'estActif': true,
+          'votes': {},
+        }
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _relanceEnCours = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _firestore
+          .collection('conversations')
+          .doc(widget.conversationId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox.shrink();
+
+        final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+        final sondageData = data['sondageRecherche'] as Map<String, dynamic>? ?? {};
+        final sondageActif = sondageData['estActif'] as bool? ?? false;
+        final rechercheColocActive = data['rechercheColocActive'] as bool?;
+        final votes = sondageData['votes'] as Map<String, dynamic>? ?? {};
+
+        return Card(
+          elevation: 1,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.grey.shade200),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                if (sondageActif)
+                  _buildSondageActif(votes)
+                else if (rechercheColocActive == true)
+                  _buildResultatRechercheActive()
+                else
+                  _buildResultatEquipeComplete()
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSondageActif(Map<String, dynamic> votes) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Êtes-vous toujours à la recherche d'autres colocataires ?",
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1E3A5F),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...widget.membres.map((uid) {
+          return _buildVoteStatus(uid, votes[uid]);
+        }),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _voteEnCours ? null : () => _voter('non'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade700,
+                  side: BorderSide(color: Colors.red.shade300),
+                ),
+                child: const Text("Non, l'équipe est complète"),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton(
+                onPressed: _voteEnCours ? null : () => _voter('oui'),
+                child: const Text('Oui, on cherche'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultatRechercheActive() {
+    return Column(
+      children: [
+        const Icon(Icons.search_rounded, color: Colors.green, size: 32),
+        const SizedBox(height: 8),
+        const Text(
+          "La recherche de colocataires est active !",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: _relanceEnCours ? null : _relancerSondage,
+          child: const Text("Relancer un vote"),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultatEquipeComplete() {
+    return Column(
+      children: [
+        const Icon(Icons.check_circle_rounded, color: Color(0xFF1E3A5F), size: 32),
+        const SizedBox(height: 8),
+        const Text(
+          "L'équipe est considérée comme complète.",
+          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: _relanceEnCours ? null : _relancerSondage,
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.grey.shade300,
+            foregroundColor: Colors.black87,
+          ),
+          child: const Text("Proposer de chercher à nouveau"),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVoteStatus(String uid, String? vote) {
+    final estMoi = uid == _currentUid;
+
+    return FutureBuilder(
+      future: UserService().recupererUtilisateur(uid),
+      builder: (context, snapshot) {
+        final prenom = snapshot.data?.prenom ?? 'Membre';
+        final nomAffiche = estMoi ? '$prenom (Vous)' : prenom;
+
+        IconData icon;
+        Color color;
+        String texte;
+
+        switch (vote) {
+          case 'oui':
+            icon = Icons.check_circle_outline_rounded;
+            color = Colors.green;
+            texte = 'veut continuer à chercher';
+            break;
+          case 'non':
+            icon = Icons.highlight_off_rounded;
+            color = Colors.red;
+            texte = 'veut compléter l\'équipe';
+            break;
+          default:
+            icon = Icons.hourglass_empty_rounded;
+            color = Colors.grey;
+            texte = 'en attente de vote...';
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Row(
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: DefaultTextStyle.of(context).style,
+                    children: [
+                      TextSpan(
+                        text: '$nomAffiche ',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextSpan(
+                        text: texte,
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

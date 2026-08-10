@@ -52,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Indique si l'étudiant connecté a déjà un logement
   bool _aDejaUnLogement = false;
 
+  /// Indique si un membre de l'équipe de l'étudiant a un logement
+  bool _coequipierADejaUnLogement = false;
+
   /// Étudiant chargé complètement
   UserModel? _currentUser;
 
@@ -80,6 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final data = doc.data() as Map<String, dynamic>;
         _role = data['role'] as String? ?? 'etudiant';
         _aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
+        await _verifierStatutLogementEquipe();
 
         // Construire l'UserModel complet
         _currentUser = UserModel.fromFirestore(doc);
@@ -104,6 +108,36 @@ class _HomeScreenState extends State<HomeScreen> {
         _ecouterNonLus();
       }
     }
+  }
+
+  /// Vérifie si un membre de l'équipe de l'utilisateur a un logement.
+  Future<void> _verifierStatutLogementEquipe() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    // Si l'utilisateur a déjà un logement, pas besoin de vérifier l'équipe.
+    if (_aDejaUnLogement) {
+      if (mounted) setState(() => _coequipierADejaUnLogement = false);
+      return;
+    }
+
+    final querySnapshot = await _firestore
+        .collection('conversations')
+        .where('membres', arrayContains: user.uid)
+        .where('demandeStatut', isEqualTo: 'accepte')
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isEmpty) return;
+
+    final conversation = querySnapshot.docs.first;
+    final membresIds = List<String>.from(conversation.data()['membres'] ?? []);
+    final autreMembreId = membresIds.firstWhere((id) => id != user.uid, orElse: () => '');
+
+    final autreMembreDoc = await _firestore.collection('users').doc(autreMembreId).get();
+    final autreMembreADejaLogement = autreMembreDoc.data()?['aDejaUnLogement'] as bool? ?? false;
+
+    if (mounted) setState(() => _coequipierADejaUnLogement = autreMembreADejaLogement);
   }
 
   /// Écoute en temps réel les changements de l'utilisateur (pour mettre à jour aDejaUnLogement)
@@ -136,12 +170,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
           _currentUser!.justificatifIdentiteUrl != (data['justificatifIdentiteUrl'] as String?);
 
-      if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser) {
+      if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser || _coequipierADejaUnLogement) {
         setState(() {
           _aDejaUnLogement = aDejaUnLogement;
           if (shouldUpdateUser) {
             _currentUser = UserModel.fromFirestore(doc);
           }
+          // Revérifier le statut de l'équipe si le statut du logement de l'utilisateur change
+          _verifierStatutLogementEquipe();
         });
       }
     });
@@ -243,8 +279,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final pages = [
       _construirePageDecouvrir(),
       _construirePageMessagerie(),
-      // Si l'étudiant a déjà un logement → "Mon logement", sinon → "Logements"
-      _aDejaUnLogement
+      // Si l'étudiant ou son coéquipier a un logement → "Mon logement", sinon → "Logements"
+      _aDejaUnLogement || _coequipierADejaUnLogement
           ? _construirePageMonLogement()
           : _construirePageLogements(),
       _construirePageMonEquipe(),
@@ -277,9 +313,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              _aDejaUnLogement ? Icons.home_work_rounded : Icons.home_rounded,
+              _aDejaUnLogement || _coequipierADejaUnLogement ? Icons.home_work_rounded : Icons.home_rounded,
             ),
-            label: _aDejaUnLogement ? 'Mon logement' : 'Logements',
+            label: _aDejaUnLogement || _coequipierADejaUnLogement ? 'Mon logement' : 'Logements',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.group_rounded),

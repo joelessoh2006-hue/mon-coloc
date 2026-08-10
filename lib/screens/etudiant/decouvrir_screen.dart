@@ -5,6 +5,7 @@ import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/chat_screen.dart';
 import 'package:mon_coloc/screens/etudiant/profile_detail_screen.dart';
 import 'package:mon_coloc/services/matching_service.dart';
+import 'package:mon_coloc/services/user_service.dart';
 
 /// Écran "Découvrir" — Affiche les profils étudiants triés par score de matching.
 ///
@@ -21,6 +22,7 @@ class DecouvrirScreen extends StatefulWidget {
 class _DecouvrirScreenState extends State<DecouvrirScreen>
     with SingleTickerProviderStateMixin {
   final MatchingService _matchingService = MatchingService();
+  final UserService _userService = UserService();
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   /// Utilisateur connecté
@@ -29,11 +31,18 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
   /// Index du sous-onglet actif (0 = sans logement, 1 = avec logement)
   int _sousOngletActif = 0;
 
+  /// Cache pour les informations des utilisateurs
+  final Map<String, Map<String, dynamic>?> _userCache = {};
+
+  /// Si false, masque l'onglet "Avec logement" (si l'utilisateur est dans un duo qui a un logement)
+  bool _peutVoirOngletAvecLogement = true;
+
   @override
   void initState() {
     super.initState();
     _chargerUtilisateurConnecte();
   }
+
 
   Future<void> _chargerUtilisateurConnecte() async {
     final user = _auth.currentUser;
@@ -47,6 +56,36 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     if (doc.exists && mounted) {
       setState(() {
         _currentUserModel = UserModel.fromFirestore(doc);
+      });
+      _verifierStatutEquipeUtilisateur();
+    }
+  }
+
+  /// Vérifie si l'utilisateur est dans un duo en recherche et si un membre a un logement.
+  /// Si oui, masque l'onglet "Avec logement".
+  Future<void> _verifierStatutEquipeUtilisateur() async {
+    final currentUserUid = _auth.currentUser?.uid;
+    if (currentUserUid == null) return;
+
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('conversations')
+        .where('rechercheColocActive', isEqualTo: true)
+        .where('membres', arrayContains: currentUserUid)
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isEmpty || !mounted) return;
+
+    final conversation = querySnapshot.docs.first;
+    final membresIds = List<String>.from(conversation.data()['membres'] ?? []);
+    final membresInfos = await _recupererInfosMembres(membresIds);
+
+    final unMembreADejaLogement =
+        membresInfos.values.any((info) => info?['aDejaUnLogement'] == true);
+
+    if (unMembreADejaLogement && mounted) {
+      setState(() {
+        _peutVoirOngletAvecLogement = false;
       });
     }
   }
@@ -134,7 +173,8 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                     ),
                   ),
                 ),
-                Expanded(
+                if (_peutVoirOngletAvecLogement)
+                  Expanded(
                   child: GestureDetector(
                     onTap: () => setState(() => _sousOngletActif = 1),
                     child: Container(
@@ -158,7 +198,7 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                       ),
                     ),
                   ),
-                ),
+                  ),
               ],
             ),
           ),
@@ -174,84 +214,243 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
   }
 
   /// Construit la liste des étudiants avec filtre optionnel sur le statut logement
-  Widget _buildStudentList(String currentUserId,
-      {bool? filtrerSansLogement, bool? filtrerAvecLogement}) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _matchingService.getMatchedStudents(
-        currentUserId,
-        filtrerParStatutLogement:
-            filtrerSansLogement == true ? false : (filtrerAvecLogement == true ? true : null),
-      ),
+  Widget _buildStudentList(
+    String currentUserId, {
+    bool? filtrerSansLogement,
+    bool? filtrerAvecLogement,
+  }) {
+    return FutureBuilder<List<dynamic>>(
+      future: Future.wait([
+        _matchingService.getMatchedStudents(
+          currentUserId,
+          filtrerParStatutLogement: _sousOngletActif == 0 ? false : true,
+        ),
+        _recupererEquipesEnRecherche(),
+      ]),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text(
-                  'Recherche de colocataires...',
-                  style: TextStyle(fontSize: 15, color: Colors.grey),
-                ),
-              ],
-            ),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
-
+ 
         if (snapshot.hasError) {
           return Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
+              padding: const EdgeInsets.all(16),
               child: Text(
-                'Erreur : ${snapshot.error}',
-                style: const TextStyle(fontSize: 16, color: Colors.red),
+                "Erreur : ${snapshot.error}",
+                style: const TextStyle(color: Colors.red),
                 textAlign: TextAlign.center,
               ),
             ),
           );
         }
-
-        final students = snapshot.data ?? [];
-
-        if (students.isEmpty) {
-          return Center(
+ 
+        // 1. Extraction des étudiants
+        final rawStudents = (snapshot.data != null && snapshot.data!.isNotEmpty)
+            ? snapshot.data![0]
+            : [];
+        final List<Map<String, dynamic>> students = (rawStudents is List)
+            ? rawStudents.cast<Map<String, dynamic>>()
+            : [];
+ 
+        // 2. Extraction et filtrage des équipes (Duos)
+        final rawTeams = (snapshot.data != null && snapshot.data!.length > 1)
+            ? snapshot.data![1]
+            : [];
+        final List<QueryDocumentSnapshot> teams = (rawTeams is List)
+            ? rawTeams.whereType<QueryDocumentSnapshot>().toList()
+            : [];
+ 
+        final List<QueryDocumentSnapshot> filteredTeams = teams.where((teamDoc) {
+          final data = teamDoc.data() as Map<String, dynamic>?;
+          final bool aUnLogement = data?['aUnLogement'] ?? data?['aDejaUnLogement'] ?? false;
+ 
+          // Si onglet 0 (Sans logement = recherche logement), on montre les duos QUI ONT un logement
+          // Si onglet 1 (Avec logement), on montre les duos SANS logement
+          if (_sousOngletActif == 0) {
+            return aUnLogement == true;
+          } else {
+            return aUnLogement == false;
+          }
+        }).toList();
+ 
+        // 3. Combinaison des duos filtrés et des étudiants
+        final combinedList = [...filteredTeams, ...students];
+ 
+        if (combinedList.isEmpty) {
+          return const Center(
             child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.search_off_rounded,
-                      size: 80, color: Colors.grey[300]),
-                  const SizedBox(height: 24),
-                  const Text(
-                    'Aucun profil étudiant vérifié n\'est disponible pour le moment.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF1E3A5F),
-                    ),
-                  ),
-                ],
+              padding: EdgeInsets.all(32),
+              child: Text(
+                "Aucun profil ou duo disponible dans cette catégorie.",
+                textAlign: TextAlign.center,
               ),
             ),
           );
         }
-
+ 
         return RefreshIndicator(
           onRefresh: () async {
-            setState(() {}); // Déclenche un rebuild du FutureBuilder
+            setState(() {});
           },
           child: ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-            itemCount: students.length,
+            itemCount: combinedList.length,
             itemBuilder: (context, index) {
-              return _buildStudentCard(students[index]);
+              final item = combinedList[index];
+              if (item is QueryDocumentSnapshot) {
+                return _buildCarteEquipe(item);
+              } else if (item is Map<String, dynamic>) {
+                return _buildStudentCard(item);
+              }
+              return const SizedBox.shrink();
             },
           ),
         );
       },
+    );
+  }
+  // ---------------------------------------------------------------------------
+  // Carte équipe
+  // ---------------------------------------------------------------------------
+  Widget _buildCarteEquipe(QueryDocumentSnapshot conversationDoc) {
+    final theme = Theme.of(context);
+    final conversationData = conversationDoc.data() as Map<String, dynamic>;
+    final membresIds = List<String>.from(conversationData['membres'] ?? []);
+    final quartier = conversationData['logementQuartier'] ?? 'Quartier non spécifié';
+    final partCandidat =
+        (conversationData['partFixeCandidat'] as num?)?.toInt() ?? 0;
+    final textePart =
+        partCandidat > 0 ? '${_formatBudget(partCandidat.toDouble())} FCFA/mois' : 'Loyer à discuter';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.teal.shade200, width: 1.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.groups_rounded,
+                          size: 16, color: Colors.teal.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Duo en recherche',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.teal.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Text(
+                  '1 place dispo',
+                  style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<Map<String, Map<String, dynamic>?>>(
+              future: _recupererInfosMembres(membresIds),
+              builder: (context, snapshot) {
+                final membresInfos = snapshot.data ?? {};
+                final noms = membresInfos.values
+                    .map((info) => info?['prenom'] as String? ?? 'Membre')
+                    .join(' & ');
+
+                return Row(
+                  children: [
+                    // Avatars
+                    SizedBox(
+                      width: 68,
+                      height: 40,
+                      child: Stack(
+                        children: [
+                          if (membresInfos.length > 1)
+                            Positioned(
+                              left: 28,
+                              child: _buildAvatar(
+                                  membresInfos[membresIds.elementAt(1)]),
+                            ),
+                          if (membresInfos.isNotEmpty)
+                            Positioned(
+                              left: 0,
+                              child: _buildAvatar(
+                                  membresInfos[membresIds.elementAt(0)]),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Noms
+                    Expanded(
+                      child: Text(
+                        noms.isEmpty ? 'Duo Mon Coloc' : noms,
+                        style: const TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _buildChip(
+                    icon: Icons.location_on_rounded,
+                    label: quartier,
+                    color: theme.colorScheme.primary),
+                _buildChip(
+                    icon: Icons.payments_rounded,
+                    label: textePart,
+                    color: Colors.teal.shade700),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () {
+                  _proposerCandidatureEquipe(conversationDoc);
+                },
+                icon: const Icon(Icons.send_rounded, size: 18),
+                label: const Text("Proposer ma candidature"),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.teal,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -263,6 +462,7 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     final score = studentData['scoreMatching'] as int? ?? 0;
     final prenom = studentData['prenom'] as String? ?? 'Inconnu';
     final ecole = studentData['ecoleUniversite'] as String? ?? '';
+    final photoUrl = studentData['photoUrl'] as String?;
     final aDejaUnLogement = studentData['aDejaUnLogement'] as bool? ?? false;
 
     return Card(
@@ -284,15 +484,20 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                 // Avatar
                 CircleAvatar(
                   radius: 28,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
-                  child: Text(
-                    prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
+                  backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
+                  backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                      ? NetworkImage(photoUrl)
+                      : null,
+                  child: (photoUrl == null || photoUrl.isEmpty)
+                      ? Text(
+                          prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: theme.colorScheme.primary,
+                          ),
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 16),
 
@@ -313,8 +518,11 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            Icon(Icons.school_rounded,
-                                size: 16, color: Colors.grey[500]),
+                            Icon(
+                              Icons.school_rounded,
+                              size: 16,
+                              color: Colors.grey[500],
+                            ),
                             const SizedBox(width: 6),
                             Flexible(
                               child: Text(
@@ -334,8 +542,11 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                         const SizedBox(height: 4),
                         Row(
                           children: [
-                            Icon(Icons.home_rounded,
-                                size: 14, color: Colors.green[600]),
+                            Icon(
+                              Icons.home_rounded,
+                              size: 14,
+                              color: Colors.green[600],
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'A un logement',
@@ -481,25 +692,32 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
         (studentData['ecoleUniversite'] as String? ?? '').isNotEmpty &&
         current.ecoleUniversite.trim().toLowerCase() ==
             (studentData['ecoleUniversite'] as String).trim().toLowerCase()) {
-      chips.add(_buildChip(
-        icon: Icons.school_rounded,
-        label: 'Même école',
-        color: const Color(0xFF1565C0),
-      ));
+      chips.add(
+        _buildChip(
+          icon: Icons.school_rounded,
+          label: 'Même école',
+          color: const Color(0xFF1565C0),
+        ),
+      );
     }
 
     // 2. Quartier partagé
     final currentQuartiers = current.quartierCible;
-    final studentQuartiers = UserModel.safeStringList(studentData['quartierCible']);
-    final quartiersCommuns =
-        currentQuartiers.where((q) => studentQuartiers.contains(q)).toList();
+    final studentQuartiers = UserModel.safeStringList(
+      studentData['quartierCible'],
+    );
+    final quartiersCommuns = currentQuartiers
+        .where((q) => studentQuartiers.contains(q))
+        .toList();
     if (quartiersCommuns.isNotEmpty) {
       for (final quartier in quartiersCommuns.take(2)) {
-        chips.add(_buildChip(
-          icon: Icons.location_on_rounded,
-          label: quartier,
-          color: const Color(0xFF7C3AED),
-        ));
+        chips.add(
+          _buildChip(
+            icon: Icons.location_on_rounded,
+            label: quartier,
+            color: const Color(0xFF7C3AED),
+          ),
+        );
       }
     }
 
@@ -507,28 +725,34 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     final currentFumeur = current.fumeur;
     final studentFumeur = studentData['fumeur'] as bool? ?? false;
     if (!currentFumeur && !studentFumeur) {
-      chips.add(_buildChip(
-        icon: Icons.smoke_free_rounded,
-        label: 'Non-fumeur',
-        color: const Color(0xFF2E7D32),
-      ));
+      chips.add(
+        _buildChip(
+          icon: Icons.smoke_free_rounded,
+          label: 'Non-fumeur',
+          color: const Color(0xFF2E7D32),
+        ),
+      );
     } else if (currentFumeur && studentFumeur) {
-      chips.add(_buildChip(
-        icon: Icons.smoking_rooms_rounded,
-        label: 'Fumeur',
-        color: const Color(0xFFE65100),
-      ));
+      chips.add(
+        _buildChip(
+          icon: Icons.smoking_rooms_rounded,
+          label: 'Fumeur',
+          color: const Color(0xFFE65100),
+        ),
+      );
     }
 
     // 4. Même besoin de silence
     if (current.besoinSilence ==
         (studentData['besoinSilence'] as bool? ?? false)) {
       if (current.besoinSilence) {
-        chips.add(_buildChip(
-          icon: Icons.volume_mute_rounded,
-          label: 'Calme',
-          color: const Color(0xFF0277BD),
-        ));
+        chips.add(
+          _buildChip(
+            icon: Icons.volume_mute_rounded,
+            label: 'Calme',
+            color: const Color(0xFF0277BD),
+          ),
+        );
       }
     }
 
@@ -536,11 +760,13 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     if (current.accepteMixite ==
             (studentData['accepteMixite'] as bool? ?? false) &&
         current.accepteMixite) {
-      chips.add(_buildChip(
-        icon: Icons.people_rounded,
-        label: 'Mixité acceptée',
-        color: const Color(0xFF6A1B9A),
-      ));
+      chips.add(
+        _buildChip(
+          icon: Icons.people_rounded,
+          label: 'Mixité acceptée',
+          color: const Color(0xFF6A1B9A),
+        ),
+      );
     }
 
     // 6. Budget compatible
@@ -550,11 +776,13 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     if (currentBudget > 0 && studentBudget > 0) {
       final diff = (currentBudget - studentBudget).abs();
       if (diff <= 20000) {
-        chips.add(_buildChip(
-          icon: Icons.attach_money_rounded,
-          label: 'Budget ~ ${_formatBudget(currentBudget)}',
-          color: const Color(0xFF00897B),
-        ));
+        chips.add(
+          _buildChip(
+            icon: Icons.attach_money_rounded,
+            label: 'Budget ~ ${_formatBudget(currentBudget)}',
+            color: const Color(0xFF00897B),
+          ),
+        );
       }
     }
 
@@ -607,27 +835,221 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     if (uid == null || uid.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Impossible de lancer la discussion : utilisateur invalide'),
+          content: Text(
+            'Impossible de lancer la discussion : utilisateur invalide',
+          ),
           behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          destinataireId: uid,
-        ),
-      ),
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => ChatScreen(destinataireId: uid)));
+  }
+  // ---------------------------------------------------------------------------
+  // Helpers pour les équipes
+  // ---------------------------------------------------------------------------
+  
+  /// Récupère les conversations où la recherche de coloc est active.
+  Future<List<QueryDocumentSnapshot>> _recupererEquipesEnRecherche() async {
+    final currentUserUid = _auth.currentUser?.uid;
+    if (currentUserUid == null) return [];
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('conversations')
+          .where('rechercheColocActive', isEqualTo: true)
+          .get();
+
+      // Règle 3: Exclure son propre Duo
+      final docs = querySnapshot.docs.where((doc) {
+        final data = doc.data() as Map<String, dynamic>?;
+        final membres = List<String>.from(data?['membres'] ?? []);
+        return !membres.contains(currentUserUid);
+      }).toList();
+
+      return docs;
+    } catch (e) {
+      debugPrint("Erreur equipes: $e");
+      return [];
+    }
+  }
+
+  /// Récupère les infos de plusieurs utilisateurs avec un système de cache.
+  Future<Map<String, Map<String, dynamic>?>> _recupererInfosMembres(
+      List<String> uids) async {
+    final result = <String, Map<String, dynamic>?>{};
+    final uidsToFetch = <String>[];
+    for (final uid in uids) {
+      if (_userCache.containsKey(uid)) {
+        result[uid] = _userCache[uid];
+      } else {
+        uidsToFetch.add(uid);
+      }
+    }
+    if (uidsToFetch.isNotEmpty) {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: uidsToFetch)
+          .get();
+      for (var doc in querySnapshot.docs) {
+        _userCache[doc.id] = doc.data();
+        result[doc.id] = doc.data();
+      }
+    }
+    return result;
+  }
+
+  Widget _buildAvatar(Map<String, dynamic>? userInfo) {
+    final photoUrl = userInfo?['photoUrl'] as String?;
+    final prenom = userInfo?['prenom'] as String? ?? '?';
+    return CircleAvatar(
+      radius: 20,
+      backgroundColor: Colors.teal.shade100,
+      backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+          ? NetworkImage(photoUrl)
+          : null,
+      child: (photoUrl == null || photoUrl.isEmpty)
+          ? Text(
+              prenom[0].toUpperCase(),
+              style: TextStyle(
+                  color: Colors.teal.shade800, fontWeight: FontWeight.bold),
+            )
+          : null,
     );
+  }
+
+  /// Affiche une modale pour que l'utilisateur postule à une équipe.
+  void _proposerCandidatureEquipe(QueryDocumentSnapshot conversationDoc) {
+    final conversationData = conversationDoc.data() as Map<String, dynamic>;
+    final membresIds = List<String>.from(conversationData['membres'] ?? []);
+
+    // Récupérer les infos pour l'affichage dans la modale
+    _recupererInfosMembres(membresIds).then((membresInfos) {
+      final noms = membresInfos.values
+          .map((info) => info?['prenom'] as String? ?? 'Membre')
+          .join(' & ');
+
+      final partCandidat =
+          (conversationData['partFixeCandidat'] as num?)?.toInt() ?? 0;
+      final textePart = partCandidat > 0
+          ? '$partCandidat FCFA / mois'
+          : 'À discuter avec les membres';
+
+      final messageController = TextEditingController();
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rejoindre la colocation de $noms',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Text('Votre part : $textePart',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: messageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Message d\'introduction (facultatif)',
+                    border: OutlineInputBorder(),
+                    alignLabelWithHint: true,
+                  ),
+                  maxLines: 3,
+                  textCapitalization: TextCapitalization.sentences,
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () {
+                      _envoyerCandidatureEquipe(
+                          conversationDoc.id, messageController.text);
+                      Navigator.pop(ctx);
+                    },
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    child: const Text('Confirmer et envoyer'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          );
+        },
+      );
+    });
   }
 
   /// Formate un budget en FCFA (ex: 150000 → "150k")
   String _formatBudget(double montant) {
+    if (montant >= 1000000) {
+      return '${(montant / 1000000).toStringAsFixed(1).replaceAll('.0', '')}M';
+    }
     if (montant >= 1000) {
       return '${(montant / 1000).toStringAsFixed(0)}k';
     }
     return montant.toStringAsFixed(0);
+  }
+
+  /// Enregistre la candidature d'un utilisateur pour rejoindre une équipe.
+  Future<void> _envoyerCandidatureEquipe(
+      String conversationId, String message) async {
+    final currentUserUid = _auth.currentUser?.uid;
+    if (currentUserUid == null) return;
+
+    try {
+      final docRef =
+          FirebaseFirestore.instance.collection('conversations').doc(conversationId);
+
+      // On utilise set avec merge:true pour créer le champ 'candidatures' s'il n'existe pas
+      await docRef.set({
+        'candidatures': {
+          currentUserUid: {
+            'candidatId': currentUserUid,
+            'message': message.trim(),
+            'statut': 'en_attente',
+            'date': FieldValue.serverTimestamp(),
+          }
+        }
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Candidature envoyée avec succès !'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erreur lors de l\'envoi : $e')));
+      }
+    }
   }
 }
