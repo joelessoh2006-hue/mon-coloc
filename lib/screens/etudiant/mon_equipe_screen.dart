@@ -356,13 +356,17 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
             if (membres.length == 2) ...[
               const SizedBox(height: 24),
               SondageColocWidget(
-                  conversationId: conversationId, membres: membres), // Ajout de la virgule
+                conversationId: conversationId,
+                membres: membres,
+              ), // Ajout de la virgule
             ],
             const SizedBox(height: 24),
             _CandidaturesRecuesWidget(
-                conversationId: conversationId, membres: membres),
-            // ], // Parenthèse fermante déplacée
+              conversationId: conversationId,
+              membres: membres,
+            ),
 
+            // ], // Parenthèse fermante déplacée
             const SizedBox(height: 24),
 
             // Section : Membres de l'équipe
@@ -866,8 +870,9 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
 class _CandidaturesRecuesWidget extends StatelessWidget {
   final String conversationId;
   final List<String> membres;
+  MatchingService get _matchingService => MatchingService();
 
-  const _CandidaturesRecuesWidget({
+  _CandidaturesRecuesWidget({
     required this.conversationId,
     required this.membres,
   });
@@ -909,9 +914,9 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            ...candidaturesEnAttente
-                .map((c) => _buildCandidatCard(context, c.key, c.value))
-                ,
+            ...candidaturesEnAttente.map(
+              (c) => _buildCandidatCard(context, c.key, c.value),
+            ),
           ],
         );
       },
@@ -919,7 +924,10 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
   }
 
   Widget _buildCandidatCard(
-      BuildContext context, String candidatId, Map<String, dynamic> data) {
+    BuildContext context,
+    String candidatId,
+    Map<String, dynamic> data,
+  ) {
     final message = data['message'] as String? ?? 'Aucun message.';
 
     return Card(
@@ -935,20 +943,25 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance.collection('users').doc(candidatId).get(),
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(candidatId)
+                  .get(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData || !snapshot.data!.exists) return const LinearProgressIndicator();
-                final candidatData = snapshot.data!.data() as Map<String, dynamic>;
+                if (!snapshot.hasData || !snapshot.data!.exists)
+                  return const LinearProgressIndicator();
+                final candidatData =
+                    snapshot.data!.data() as Map<String, dynamic>;
                 final prenom = candidatData['prenom'] as String? ?? 'Candidat';
                 final photoUrl = candidatData['photoUrl'] as String?;
-                final score = candidatData['scoreMatching'] as int? ?? 0;
 
                 return Row(
                   children: [
                     CircleAvatar(
                       radius: 24,
-                      backgroundImage:
-                          photoUrl != null ? NetworkImage(photoUrl) : null,
+                      backgroundImage: photoUrl != null
+                          ? NetworkImage(photoUrl)
+                          : null,
                       child: photoUrl == null ? Text(prenom[0]) : null,
                     ),
                     const SizedBox(width: 12),
@@ -956,13 +969,25 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
                       child: Text(
                         prenom,
                         style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 16),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
                       ),
                     ),
-                    Text('Match: $score%',
-                        style: TextStyle(
+                    FutureBuilder<int>(
+                      future: _matchingService.calculerScoreDetaille(
+                          FirebaseAuth.instance.currentUser!.uid, candidatId),
+                      builder: (context, scoreSnapshot) {
+                        final score = scoreSnapshot.data ?? 0;
+                        return Text(
+                          'Match: $score%',
+                          style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary)),
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        );
+                      },
+                    )
                   ],
                 );
               },
@@ -971,9 +996,10 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
             Text(
               'Message de motivation :',
               style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey.shade600),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade600,
+              ),
             ),
             const SizedBox(height: 4),
             Text(message.isNotEmpty ? '"$message"' : 'Aucun message.'),
@@ -982,25 +1008,29 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: () => _gererCandidature(context, candidatId, false),
+                    onPressed: () =>
+                        _gererCandidature(context, candidatId, false),
                     icon: const Icon(Icons.close_rounded, size: 18),
                     label: const Text('Refuser'),
                     style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red.shade700),
+                      foregroundColor: Colors.red.shade700,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: () => _gererCandidature(context, candidatId, true),
+                    onPressed: () =>
+                        _gererCandidature(context, candidatId, true),
                     icon: const Icon(Icons.check_rounded, size: 18),
                     label: const Text('Accepter'),
                     style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green.shade700),
+                      backgroundColor: Colors.green.shade700,
+                    ),
                   ),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),
@@ -1008,10 +1038,14 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
   }
 
   Future<void> _gererCandidature(
-      BuildContext context, String candidatId, bool accepter) async {
+    BuildContext context,
+    String candidatId,
+    bool accepter,
+  ) async {
     try {
-      final docRef =
-          FirebaseFirestore.instance.collection('conversations').doc(conversationId);
+      final docRef = FirebaseFirestore.instance
+          .collection('conversations')
+          .doc(conversationId);
 
       if (accepter) {
         // 1. Ajouter le membre à la conversation
@@ -1034,7 +1068,8 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                'Candidature ${accepter ? 'acceptée' : 'refusée'} avec succès.'),
+              'Candidature ${accepter ? 'acceptée' : 'refusée'} avec succès.',
+            ),
             backgroundColor: accepter ? Colors.green : Colors.orange,
           ),
         );
@@ -1075,8 +1110,9 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
     setState(() => _voteEnCours = true);
 
     try {
-      final docRef =
-          _firestore.collection('conversations').doc(widget.conversationId);
+      final docRef = _firestore
+          .collection('conversations')
+          .doc(widget.conversationId);
       await docRef.update({'sondageRecherche.votes.$_currentUid': vote});
 
       // Après le vote, vérifier si tout le monde a voté pour traiter le résultat
@@ -1087,9 +1123,9 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur lors du vote: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Erreur lors du vote: $e')));
       }
     } finally {
       if (mounted) {
@@ -1099,7 +1135,9 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
   }
 
   Future<void> _traiterResultatSondage(
-      DocumentReference docRef, Map<String, dynamic> data) async {
+    DocumentReference docRef,
+    Map<String, dynamic> data,
+  ) async {
     final sondageData = data['sondageRecherche'] as Map<String, dynamic>? ?? {};
     final votes = sondageData['votes'] as Map<String, dynamic>? ?? {};
 
@@ -1126,13 +1164,11 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
     setState(() => _relanceEnCours = true);
 
     try {
-      final docRef =
-          _firestore.collection('conversations').doc(widget.conversationId);
+      final docRef = _firestore
+          .collection('conversations')
+          .doc(widget.conversationId);
       await docRef.update({
-        'sondageRecherche': {
-          'estActif': true,
-          'votes': {},
-        }
+        'sondageRecherche': {'estActif': true, 'votes': {}},
       });
     } finally {
       if (mounted) {
@@ -1152,7 +1188,8 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
         if (!snapshot.hasData) return const SizedBox.shrink();
 
         final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-        final sondageData = data['sondageRecherche'] as Map<String, dynamic>? ?? {};
+        final sondageData =
+            data['sondageRecherche'] as Map<String, dynamic>? ?? {};
         final sondageActif = sondageData['estActif'] as bool? ?? false;
         final rechercheColocActive = data['rechercheColocActive'] as bool?;
         final votes = sondageData['votes'] as Map<String, dynamic>? ?? {};
@@ -1172,7 +1209,7 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
                 else if (rechercheColocActive == true)
                   _buildResultatRechercheActive()
                 else
-                  _buildResultatEquipeComplete()
+                  _buildResultatEquipeComplete(),
               ],
             ),
           ),
@@ -1245,11 +1282,18 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
   Widget _buildResultatEquipeComplete() {
     return Column(
       children: [
-        const Icon(Icons.check_circle_rounded, color: Color(0xFF1E3A5F), size: 32),
+        const Icon(
+          Icons.check_circle_rounded,
+          color: Color(0xFF1E3A5F),
+          size: 32,
+        ),
         const SizedBox(height: 8),
         const Text(
           "L'équipe est considérée comme complète.",
-          style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E3A5F)),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E3A5F),
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),

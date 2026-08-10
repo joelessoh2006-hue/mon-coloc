@@ -96,6 +96,46 @@ class MatchingService {
     return matchedStudents;
   }
 
+  /// Calcule le score d'affinité (0–100) entre deux utilisateurs spécifiques.
+  Future<int> calculerScoreDetaille(String user1Id, String user2Id) async {
+    final user1Doc = await _usersCollection.doc(user1Id).get();
+    final user2Doc = await _usersCollection.doc(user2Id).get();
+
+    if (!user1Doc.exists || !user2Doc.exists) {
+      return 0;
+    }
+
+    final user1 = UserModel.fromFirestore(user1Doc);
+    final user2 = UserModel.fromFirestore(user2Doc);
+
+    return _calculerScoreAffinite(user1, user2);
+  }
+
+  /// Calcule le score d'affinité moyen entre l'utilisateur connecté
+  /// et les autres membres d'une équipe.
+  Future<int> calculerScoreMoyenEquipe(
+      String currentUserId, List<String> equipeMembresIds) async {
+    final currentUserDoc = await _usersCollection.doc(currentUserId).get();
+    if (!currentUserDoc.exists) {
+      return 0;
+    }
+    final currentUser = UserModel.fromFirestore(currentUserDoc);
+
+    int totalScore = 0;
+    int count = 0;
+
+    for (final memberId in equipeMembresIds) {
+      if (memberId == currentUserId) continue; // Ne pas se matcher avec soi-même
+      final memberDoc = await _usersCollection.doc(memberId).get();
+      if (memberDoc.exists) {
+        final member = UserModel.fromFirestore(memberDoc);
+        totalScore += _calculerScoreAffinite(currentUser, member);
+        count++;
+      }
+    }
+    return count > 0 ? (totalScore / count).round() : 0;
+  }
+
   /// Calcule le score d'affinité (0–100) entre l'utilisateur connecté [current]
   /// et un autre étudiant [other].
   ///

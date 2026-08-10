@@ -412,24 +412,17 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    FutureBuilder<int>(
+                      future: _matchingService.calculerScoreMoyenEquipe(
+                          _auth.currentUser!.uid, membresIds),
+                      builder: (context, scoreSnapshot) {
+                        final averageScore = scoreSnapshot.data ?? 0;
+                        return _buildScoreBadge(averageScore);
+                      },
+                    )
                   ],
                 );
               },
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _buildChip(
-                    icon: Icons.location_on_rounded,
-                    label: quartier,
-                    color: theme.colorScheme.primary),
-                _buildChip(
-                    icon: Icons.payments_rounded,
-                    label: textePart,
-                    color: Colors.teal.shade700),
-              ],
             ),
             const SizedBox(height: 16),
             SizedBox(
