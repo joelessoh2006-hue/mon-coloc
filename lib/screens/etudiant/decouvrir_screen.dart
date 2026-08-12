@@ -856,11 +856,14 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
           .where('rechercheColocActive', isEqualTo: true)
           .get();
 
-      // Règle 3: Exclure son propre Duo
+      // Filtrer les équipes :
+      // 1. Doivent avoir moins de 3 membres (une place disponible).
+      // 2. Exclure le propre duo de l'utilisateur.
       final docs = querySnapshot.docs.where((doc) {
         final data = doc.data() as Map<String, dynamic>?;
         final membres = List<String>.from(data?['membres'] ?? []);
-        return !membres.contains(currentUserUid);
+        final aUnePlace = membres.length < 3;
+        return aUnePlace && !membres.contains(currentUserUid);
       }).toList();
 
       return docs;
