@@ -131,6 +131,7 @@ class _DemandesBailleurScreenState extends State<DemandesBailleurScreen> {
             ),
     );
   }
+
   Widget _buildDemandeContent(
     DocumentSnapshot demande,
     Map<String, dynamic> data,
@@ -192,7 +193,7 @@ class _DemandesBailleurScreenState extends State<DemandesBailleurScreen> {
         const SizedBox(height: 12),
         _buildInfoRow(
           icon: Icons.real_estate_agent_outlined,
-          label: 'Loyer proposé',
+          label: 'Loyer',
           value: '$loyer FCFA',
         ),
         const SizedBox(height: 16),

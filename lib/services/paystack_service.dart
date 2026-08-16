@@ -1,4 +1,7 @@
+import 'dart:js' as js;
+import 'dart:js_util' as js_util;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:mon_coloc/services/pdf_service.dart';
@@ -19,7 +22,7 @@ class PaystackService {
     required String bailleurUid,
     required String etudiantUid,
     required String
-    typePaiement, // 'acompte_reservation', 'caution', 'loyer_mensuel'
+        typePaiement, // 'acompte_reservation', 'caution', 'loyer_mensuel'
     String? locationId, // Requis pour 'caution' et 'loyer_mensuel'
     String? echeanceId, // Requis pour 'loyer_mensuel'
     required VoidCallback onSuccess,
@@ -28,136 +31,149 @@ class PaystackService {
     final String reference =
         'TRX_${typePaiement.toUpperCase()}_${DateTime.now().millisecondsSinceEpoch}';
 
+    // Callback exécuté après un succès de paiement
+    Future<void> handleSuccess() async {
+      try {
+        final batch = _firestore.batch();
+
+        // 1. Préparer les données de la transaction (commun à tous les types)
+        final transactionRef = _firestore.collection('transactions').doc();
+        final transactionData = {
+          'referencePaystack': reference,
+          'logementId': logementId,
+          'etudiantUid': etudiantUid,
+          'bailleurUid': bailleurUid,
+          'montant': montant,
+          'typePaiement': typePaiement,
+          'statut': 'succes',
+          'date': FieldValue.serverTimestamp(),
+        };
+
+        batch.set(transactionRef, transactionData);
+
+        // 2. Mises à jour spécifiques au type de paiement
+        switch (typePaiement) {
+          case 'acompte_reservation':
+            final logementRef =
+                _firestore.collection('logements').doc(logementId);
+            batch.update(logementRef, {
+              'estReserve': true,
+              'statut': 'reserve',
+            });
+
+            final demandeQuery = await _firestore
+                .collection('demandes_reservation')
+                .where('logementId', isEqualTo: logementId)
+                .where('etudiantId', isEqualTo: etudiantUid)
+                .where('statut', isEqualTo: 'acceptee')
+                .limit(1)
+                .get();
+            if (demandeQuery.docs.isNotEmpty) {
+              batch.update(demandeQuery.docs.first.reference, {
+                'statut': 'payee',
+                'datePaiement': FieldValue.serverTimestamp(),
+              });
+            }
+            break;
+
+          case 'caution':
+            if (locationId == null) {
+              throw Exception(
+                "L'ID de la location est requis pour payer la caution.",
+              );
+            }
+            final locationRef =
+                _firestore.collection('locations').doc(locationId);
+            batch.update(locationRef, {
+              'cautionPayee': true,
+              'datePaiementCaution': FieldValue.serverTimestamp(),
+            });
+            break;
+
+          case 'loyer_mensuel':
+            if (locationId == null || echeanceId == null) {
+              throw Exception(
+                "L'ID de la location et de l'échéance sont requis pour payer le loyer.",
+              );
+            }
+            final echeanceRef = _firestore
+                .collection('locations')
+                .doc(locationId)
+                .collection('echeances')
+                .doc(echeanceId);
+            batch.update(echeanceRef, {
+              'statut': 'paye',
+              'datePaiement': FieldValue.serverTimestamp(),
+            });
+            break;
+        }
+
+        // 3. Exécuter l'opération atomique
+        await batch.commit();
+
+        // 4. Exécuter le callback de succès fourni
+        if (context.mounted) {
+          onSuccess();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Paiement réussi ! Votre reçu a été généré.'),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+
+          await PdfService.generateReceipt(
+            transactionData: transactionData,
+          );
+        }
+      } catch (e) {
+        debugPrint("Erreur post-paiement Firestore : $e");
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Erreur post-paiement : $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+
+    // Callback si l'utilisateur ferme le popup de paiement
+    void handleClosed() {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Paiement annulé.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+
     try {
-      await FlutterPaystackPlus.openPaystackPopup(
-        publicKey: _publicKey,
-        customerEmail: emailEtudiant,
-        amount: amountInSubunits.toString(),
-        reference: reference,
-        currency: 'XOF', // Franc CFA
-        onClosed: () {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Paiement annulé.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        },
-        onSuccess: () async {
-          try {
-            final batch = _firestore.batch();
-
-            // 1. Préparer les données de la transaction (commun à tous les types)
-            final transactionRef = _firestore.collection('transactions').doc();
-            final transactionData = {
-              'referencePaystack': reference, // Garder la référence
-              'logementId': logementId,
-              'etudiantUid': etudiantUid,
-              'bailleurUid': bailleurUid,
-              'montant': montant,
-              'typePaiement': typePaiement,
-              'statut': 'succes',
-              'date': FieldValue.serverTimestamp(),
-            };
-
-            batch.set(transactionRef, transactionData);
-
-            // 2. Mises à jour spécifiques au type de paiement
-            switch (typePaiement) {
-              case 'acompte_reservation':
-                final logementRef = _firestore
-                    .collection('logements')
-                    .doc(logementId);
-                batch.update(logementRef, {
-                  'estReserve': true,
-                  'statut': 'reserve',
-                });
-                // Pour l'acompte, on met à jour aussi la demande de réservation
-                final demandeQuery = await _firestore
-                    .collection('demandes_reservation')
-                    .where('logementId', isEqualTo: logementId)
-                    .where('etudiantId', isEqualTo: etudiantUid)
-                    .where('statut', isEqualTo: 'acceptee')
-                    .limit(1)
-                    .get();
-                if (demandeQuery.docs.isNotEmpty) {
-                  batch.update(demandeQuery.docs.first.reference, {
-                    'statut': 'payee',
-                    'datePaiement': FieldValue.serverTimestamp(),
-                  });
-                }
-                break;
-
-              case 'caution':
-                if (locationId == null) {
-                  throw Exception(
-                    "L'ID de la location est requis pour payer la caution.",
-                  );
-                }
-                final locationRef = _firestore
-                    .collection('locations')
-                    .doc(locationId);
-                batch.update(locationRef, {
-                  'cautionPayee': true,
-                  'datePaiementCaution': FieldValue.serverTimestamp(),
-                });
-                break;
-
-              case 'loyer_mensuel':
-                if (locationId == null || echeanceId == null) {
-                  throw Exception(
-                    "L'ID de la location et de l'échéance sont requis pour payer le loyer.",
-                  );
-                }
-                final echeanceRef = _firestore
-                    .collection('locations')
-                    .doc(locationId)
-                    .collection('echeances')
-                    .doc(echeanceId);
-                batch.update(echeanceRef, {
-                  'statut': 'paye',
-                  'datePaiement': FieldValue.serverTimestamp(),
-                });
-                break;
-            }
-
-            // 3. Exécuter l'opération atomique
-            await batch.commit();
-
-            // 4. Exécuter le callback de succès fourni
-            if (context.mounted) {
-              // Appeler le callback de succès pour rafraîchir l'UI de l'appelant
-              onSuccess();
-
-              // Afficher le SnackBar de succès et générer le PDF
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Paiement réussi ! Votre reçu a été généré.'),
-                  backgroundColor: Colors.green,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-
-              // Générer le reçu PDF avec les données de la transaction
-              await PdfService.generateReceipt(
-                transactionData: transactionData,
-              );
-            }
-          } catch (e) {
-            debugPrint("Erreur post-paiement Firestore : $e");
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Erreur post-paiement : $e'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          }
-        },
-      );
+      if (kIsWeb) {
+        // Redirection vers le script JS d'interopérabilité pour le Web
+        _lancerPaiementWeb(
+          email: emailEtudiant,
+          amountInSubunits: amountInSubunits,
+          reference: reference,
+          onSuccess: handleSuccess,
+          onClose: handleClosed,
+        );
+      } else {
+        // Exécution via le SDK Mobile natif
+        await FlutterPaystackPlus.openPaystackPopup(
+          publicKey: _publicKey,
+          customerEmail: emailEtudiant,
+          amount: amountInSubunits.toString(),
+          reference: reference,
+          currency: 'XOF',
+          onClosed: handleClosed,
+          onSuccess: handleSuccess,
+        );
+      }
     } catch (e) {
       debugPrint("Erreur Paystack : $e");
       if (context.mounted) {
@@ -169,5 +185,32 @@ class PaystackService {
         );
       }
     }
+  }
+
+  /// Méthode réservée à la plate-forme Web utilisant JavaScript Interop
+  static void _lancerPaiementWeb({
+    required String email,
+    required int amountInSubunits,
+    required String reference,
+    required VoidCallback onSuccess,
+    required VoidCallback onClose,
+  }) {
+    // Vérification de sécurité avant l'appel
+    if (!js.context.hasProperty('paystackPopUp')) {
+      debugPrint(
+          "Erreur : La fonction paystackPopUp est introuvable dans le navigateur.");
+      return;
+    }
+
+    js.context.callMethod('paystackPopUp', [
+      _publicKey,
+      email,
+      amountInSubunits,
+      reference,
+      '', // plan
+      'XOF', // currency
+      js.allowInterop(onClose),
+      js.allowInterop(onSuccess),
+    ]);
   }
 }
