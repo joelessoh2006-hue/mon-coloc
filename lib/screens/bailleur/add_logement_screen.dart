@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image/image.dart' as img;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:mon_coloc/utils/image_utils.dart';
 
 /// Écran de formulaire permettant à un bailleur d'ajouter un nouveau logement.
 class AddLogementScreen extends StatefulWidget {
@@ -125,44 +124,14 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
 
     for (var i = 0; i < _selectedPhotos.length; i++) {
       final XFile file = _selectedPhotos[i];
-      print("DEBUG: Compression et encodage Base64 de l'image $i");
       final bytes = await file.readAsBytes();
 
-      try {
-        final image = img.decodeImage(bytes);
+      // Utilisation directe de ImageUtils (plus besoin du package img)
+      final base64Url = ImageUtils.compressAndEncodeBase64(bytes);
 
-        if (image != null) {
-          // Réduire la résolution si nécessaire (max 1024) puis compresser fortement
-          const int maxSide = 1024;
-          img.Image resized = image;
-          if (image.width > maxSide || image.height > maxSide) {
-            if (image.width >= image.height) {
-              resized = img.copyResize(image, width: maxSide);
-            } else {
-              resized = img.copyResize(image, height: maxSide);
-            }
-          }
-
-          // Qualité faible pour garder la chaîne Base64 légère
-          final jpg = img.encodeJpg(resized, quality: 35);
-          final b64 = base64Encode(jpg);
-          b64List.add(b64);
-          print(
-            "DEBUG: Image $i compressée (${jpg.length} bytes) et encodée en Base64",
-          );
-        } else {
-          // Si decode échoue, utilser l'original (fallback)
-          final b64 = base64Encode(bytes);
-          b64List.add(b64);
-          print(
-            "DEBUG: Image $i non décodable, utilisation du flux original en Base64",
-          );
-        }
-      } catch (e) {
-        // En cas d'erreur, sauvegarder l'original en Base64 et continuer
-        final b64 = base64Encode(bytes);
-        b64List.add(b64);
-        print("DEBUG: Erreur lors du traitement image $i : ${e.toString()}");
+      if (base64Url.isNotEmpty) {
+        b64List.add(base64Url);
+        print("DEBUG: Image $i compressée et encodée avec succès");
       }
     }
 
@@ -172,7 +141,6 @@ class _AddLogementScreenState extends State<AddLogementScreen> {
   /// Valide et publie le logement dans Firestore
   Future<void> _publierAnnonce() async {
     if (!_formKey.currentState!.validate()) return;
-
     // Vérifier que des photos ont été ajoutées
     if (_selectedPhotos.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

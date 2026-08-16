@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'logement_detail_screen.dart';
@@ -7,8 +8,8 @@ import 'logement_detail_screen.dart';
 /// Écran listant les logements disponibles pour les étudiants.
 ///
 /// Récupère tous les logements depuis Firestore (collection "logements")
-/// et les affiche sous forme de cartes (Cards) avec des filtres par commune
-/// et budget maximum.
+/// et les affiche sous forme de cartes (Cards) avec des filtres par commune,
+/// budget maximum et favoris.
 class LogementsListScreen extends StatefulWidget {
   const LogementsListScreen({super.key});
 
@@ -17,11 +18,17 @@ class LogementsListScreen extends StatefulWidget {
 }
 
 class _LogementsListScreenState extends State<LogementsListScreen> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   /// Filtre : commune sélectionnée (null = toutes)
   String? _communeChoisie;
 
   /// Filtre : budget maximum saisi (null = aucun filtre)
   final TextEditingController _budgetController = TextEditingController();
+
+  /// Filtre : afficher uniquement les favoris
+  bool _filtreFavorisActif = false;
 
   /// Liste des communes disponibles (copiée depuis add_logement_screen)
   final List<String> _communes = [
@@ -47,11 +54,19 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
   }
 
   /// Construit la requête Firestore en fonction des filtres sélectionnés.
-  Stream<QuerySnapshot> _streamLogements() {
+  Stream<QuerySnapshot> _streamLogements(List<String> favorisIds) {
     // On ne récupère que les logements qui ont été validés par un admin.
-    Query query = FirebaseFirestore.instance
-        .collection('logements') //
+    Query query = _firestore
+        .collection('logements')
         .where('status', isEqualTo: 'valide');
+
+    // Filtrer par favoris si le filtre est actif et que la liste n'est pas vide
+    if (_filtreFavorisActif && favorisIds.isNotEmpty) {
+      query = query.where(FieldPath.documentId, whereIn: favorisIds);
+    } else if (_filtreFavorisActif && favorisIds.isEmpty) {
+      // Si le filtre favoris est actif mais qu'il n'y a aucun favori, on retourne un stream vide.
+      return const Stream.empty();
+    }
 
     // Filtrer par commune si une commune est sélectionnée
     if (_communeChoisie != null) {
@@ -91,9 +106,36 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
     }).toList();
   }
 
+  /// Ajoute ou retire un logement des favoris de l'utilisateur.
+  Future<void> _toggleFavori(String logementId, bool estFavori) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    final userDocRef = _firestore.collection('users').doc(user.uid);
+
+    if (estFavori) {
+      // Retirer des favoris
+      await userDocRef.update({
+        'favoris': FieldValue.arrayRemove([logementId]),
+      });
+    } else {
+      // Ajouter aux favoris
+      await userDocRef.update({
+        'favoris': FieldValue.arrayUnion([logementId]),
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currentUser = _auth.currentUser;
+
+    if (currentUser == null) {
+      return const Scaffold(
+        body: Center(child: Text("Veuillez vous connecter.")),
+      );
+    }
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -103,99 +145,118 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
             // ---------- Barre de filtres ----------
             _barreFiltres(theme),
 
-            // ---------- StreamBuilder pour les logements ----------
+            // ---------- StreamBuilder pour les favoris de l'utilisateur ----------
             Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _streamLogements(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              size: 64,
-                              color: Colors.red.shade300,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Erreur de chargement',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Impossible de récupérer les logements.\nVérifiez votre connexion.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
+              child: StreamBuilder<DocumentSnapshot>(
+                stream: _firestore
+                    .collection('users')
+                    .doc(currentUser.uid)
+                    .snapshots(),
+                builder: (context, userSnapshot) {
+                  final favorisIds =
+                      (userSnapshot.data?.data()
+                              as Map<String, dynamic>?)?['favoris']
+                          as List? ??
+                      [];
+                  final favoris = favorisIds.cast<String>().toList();
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  final docs = snapshot.data?.docs ?? [];
-                  final docsFiltres = _filtrerLogementsLocalement(docs);
-
-                  if (docsFiltres.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.home_work_rounded,
-                              size: 80,
-                              color: Colors.grey.shade300,
+                  // ---------- StreamBuilder pour les logements ----------
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: _streamLogements(favoris),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 64,
+                                  color: Colors.red.shade300,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Erreur de chargement',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Impossible de récupérer les logements.\nVérifiez votre connexion.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'Aucun logement trouvé',
-                              style: theme.textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                        );
+                      }
+
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      final docs = snapshot.data?.docs ?? [];
+                      final docsFiltres = _filtrerLogementsLocalement(docs);
+
+                      if (docsFiltres.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.home_work_rounded,
+                                  size: 80,
+                                  color: Colors.grey.shade300,
+                                ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  'Aucun logement trouvé',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _filtreFavorisActif
+                                      ? 'Vous n\'avez aucun logement en favori correspondant à ces filtres.'
+                                      : 'Aucun logement disponible pour ces critères.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              _communeChoisie != null
-                                  ? 'Aucun logement disponible à $_communeChoisie pour ce budget.'
-                                  : 'Aucun logement disponible pour ce budget.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
+                          ),
+                        );
+                      }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                    itemCount: docsFiltres.length,
-                    itemBuilder: (context, index) {
-                      final doc = docsFiltres[index];
-                      final data = doc.data() as Map<String, dynamic>?;
+                      return ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+                        itemCount: docsFiltres.length,
+                        itemBuilder: (context, index) {
+                          final doc = docsFiltres[index];
+                          final data = doc.data() as Map<String, dynamic>?;
 
-                      if (data == null) return const SizedBox.shrink();
+                          if (data == null) return const SizedBox.shrink();
 
-                      return _carteLogement(
-                        data: data,
-                        theme: theme,
-                        documentId: doc.id,
+                          final estFavori = favoris.contains(doc.id);
+
+                          return _carteLogement(
+                            data: data,
+                            theme: theme,
+                            documentId: doc.id,
+                            estFavori: estFavori,
+                          );
+                        },
                       );
                     },
                   );
@@ -218,77 +279,115 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
         color: theme.colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
+      child: Column(
         children: [
-          // Dropdown commune
-          Expanded(
-            flex: 3,
-            child: DropdownButtonFormField<String>(
-              initialValue: _communeChoisie,
-              isExpanded: true, // Pour éviter le RenderFlex overflow
-              decoration: InputDecoration(
-                hintText: 'Commune',
-                prefixIcon: const Icon(Icons.location_city_rounded, size: 20),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+          Row(
+            children: [
+              // Dropdown commune
+              Expanded(
+                flex: 3,
+                child: DropdownButtonFormField<String>(
+                  initialValue: _communeChoisie,
+                  isExpanded: true, // Pour éviter le RenderFlex overflow
+                  decoration: InputDecoration(
+                    hintText: 'Commune',
+                    prefixIcon: const Icon(
+                      Icons.location_city_rounded,
+                      size: 20,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.08),
+                  ),
+                  icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('Toutes', style: TextStyle(fontSize: 14)),
+                    ),
+                    ..._communes.map((commune) {
+                      return DropdownMenuItem(
+                        value: commune,
+                        child: Text(
+                          commune,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      );
+                    }),
+                  ],
+                  onChanged: (value) {
+                    setState(() => _communeChoisie = value);
+                  },
                 ),
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.grey.withValues(alpha: 0.08),
               ),
-              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
-              items: [
-                const DropdownMenuItem(
-                  value: null,
-                  child: Text('Toutes', style: TextStyle(fontSize: 14)),
-                ),
-                ..._communes.map((commune) {
-                  return DropdownMenuItem(
-                    value: commune,
-                    child: Text(commune, style: const TextStyle(fontSize: 14)),
-                  );
-                }),
-              ],
-              onChanged: (value) {
-                setState(() => _communeChoisie = value);
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
+              const SizedBox(width: 12),
 
-          // Champ budget max
-          Expanded(
-            flex: 2,
-            child: TextFormField(
-              controller: _budgetController,
-              decoration: InputDecoration(
-                hintText: 'Budget max',
-                prefixIcon: const Icon(Icons.monetization_on_rounded, size: 20),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+              // Champ budget max
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  controller: _budgetController,
+                  decoration: InputDecoration(
+                    hintText: 'Budget max',
+                    prefixIcon: const Icon(
+                      Icons.monetization_on_rounded,
+                      size: 20,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    isDense: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.withOpacity(0.08),
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
                 ),
-                isDense: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.grey.withValues(alpha: 0.08),
               ),
-              keyboardType: TextInputType.number,
-              onChanged: (_) => setState(() {}),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Filtre favoris
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              label: const Text('Mes favoris'),
+              selected: _filtreFavorisActif,
+              onSelected: (selected) {
+                setState(() {
+                  _filtreFavorisActif = selected;
+                });
+              },
+              avatar: Icon(
+                _filtreFavorisActif
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                size: 18,
+                color: _filtreFavorisActif
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              selectedColor: theme.colorScheme.primary.withOpacity(0.15),
+              checkmarkColor: theme.colorScheme.primary,
             ),
           ),
         ],
@@ -303,6 +402,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
     required Map<String, dynamic> data,
     required ThemeData theme,
     required String documentId,
+    required bool estFavori,
   }) {
     // Extraction des champs avec valeurs par défaut
     final commune = data['commune'] as String? ?? 'Non spécifiée';
@@ -324,31 +424,28 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
 
     // Localisation
     final localisation = quartier.isNotEmpty ? '$commune, $quartier' : commune;
-    final imageSource = (data['logementPhotos'] is List)
-        ? (data['logementPhotos'] as List)
-              .firstWhere(
-                (value) => value is String && value.trim().isNotEmpty,
-                orElse: () => '',
-              )
-              .toString()
-        : (data['logementPhotos'] is String
-              ? data['logementPhotos'] as String
-              : null);
+    final photos = data['logementPhotos'];
+    String? imageSource;
+    if (photos is List && photos.isNotEmpty) {
+      imageSource = photos.firstWhere((p) => p is String && p.isNotEmpty, orElse: () => null) as String?;
+    } else if (photos is String && photos.isNotEmpty) {
+      imageSource = photos;
+    }
 
     return Card(
       margin: const EdgeInsets.only(top: 12),
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+        side: BorderSide(color: Colors.grey.withOpacity(0.15)),
       ),
       child: InkWell(
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => LogementDetailScreen(
+                logementId: documentId,
                 logementData: data,
-                documentId: documentId,
               ),
             ),
           );
@@ -364,13 +461,13 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Photo du logement si disponible
-                  if (imageSource != null && imageSource.toString().isNotEmpty)
+                  if (imageSource != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SizedBox(
                         width: 72,
                         height: 72,
-                        child: _buildPhotoLogement(imageSource.toString()),
+                        child: _buildPhotoLogement(imageSource),
                       ),
                     )
                   else
@@ -379,7 +476,7 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                       width: 72,
                       height: 72,
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                        color: theme.colorScheme.primary.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
@@ -433,24 +530,15 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                     ),
                   ),
 
-                  // Prix
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                  // Bouton favori
+                  IconButton(
+                    icon: Icon(
+                      estFavori
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: estFavori ? Colors.red.shade400 : Colors.grey,
                     ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E6B4E).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '$loyerFormate FCFA/mois',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1E6B4E),
-                      ),
-                    ),
+                    onPressed: () => _toggleFavori(documentId, estFavori),
                   ),
                 ],
               ),
@@ -458,11 +546,11 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
               const SizedBox(height: 12),
 
               // Ligne séparatrice subtile
-              Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
+              Divider(height: 1, color: Colors.grey.withOpacity(0.15)),
 
               const SizedBox(height: 12),
 
-              // Ligne 2 : Caution
+              // Ligne 2 : Caution et Loyer
               Row(
                 children: [
                   Icon(
@@ -481,19 +569,24 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
                   ),
                   const Spacer(),
 
-                  // Petit indicateur "Voir plus"
-                  Text(
-                    'Voir plus',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
+                  // Prix
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
                     ),
-                  ),
-                  Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 12,
-                    color: theme.colorScheme.primary,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E6B4E).withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '$loyerFormate FCFA/mois',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E6B4E),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -520,46 +613,50 @@ class _LogementsListScreenState extends State<LogementsListScreen> {
     return buffer.toString().split('').reversed.join('');
   }
 
+  /// Nettoie la chaîne Base64 pour retirer l'en-tête Data URL.
+  String _nettoyerBase64(String input) {
+    if (input.contains(',')) {
+      return input.split(',').last;
+    }
+    return input;
+  }
+
   /// Affiche une photo de logement décodée en Base64 (comme l'admin).
   /// Affiche un placeholder en cas d'erreur de décodage.
-  Widget _buildPhotoLogement(String photoBase64) {
+  Widget _buildPhotoLogement(String source) {
+    // Gère les URL réseau
+    if (source.startsWith('http://') || source.startsWith('https://')) {
+      return Image.network(
+        source,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) => _placeholderImage(),
+      );
+    }
+    // Sinon, on suppose que c'est une chaîne Base64 (avec ou sans en-tête)
     try {
-      // Normaliser le Base64 (retirer le data URI prefix si présent)
-      String normalized = photoBase64.trim();
-      if (normalized.startsWith('data:image')) {
-        final separatorIndex = normalized.indexOf(',');
-        if (separatorIndex != -1) {
-          normalized = normalized.substring(separatorIndex + 1).trim();
-        }
-      }
-
-      final bytes = base64Decode(normalized);
+      final bytes = base64Decode(_nettoyerBase64(source));
       return Image.memory(
         bytes,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey.shade200,
-            child: Icon(
-              Icons.image_not_supported_rounded,
-              color: Colors.grey.shade600,
-              size: 32,
-            ),
-          );
-        },
+        errorBuilder: (context, error, stackTrace) => _placeholderImage(icon: Icons.broken_image_rounded),
       );
     } catch (e) {
-      // En cas d'erreur de décodage, afficher un placeholder
-      return Container(
-        color: Colors.grey.shade200,
-        child: Icon(
-          Icons.broken_image_rounded,
-          color: Colors.grey.shade600,
-          size: 32,
-        ),
-      );
+      return _placeholderImage(icon: Icons.broken_image_rounded);
     }
   }
-}
+
+  Widget _placeholderImage({IconData icon = Icons.image_not_supported_rounded}) {
+    return Container(
+      color: Colors.grey.shade200,
+      child: Icon(
+        icon,
+        color: Colors.grey.shade600,
+        size: 32,
+      ),
+    );
+  }
+ }

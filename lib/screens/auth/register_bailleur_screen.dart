@@ -1,10 +1,9 @@
 // Écran d'inscription dédié aux bailleurs
 // Demande : Nom, Prénom, Adresse email, Mot de passe, Numéro de téléphone
 // PAS de champ École/Université ni de budget
-// Après validation -> redirige vers RegisterBailleurDocsScreen
+// Après validation -> redirige vers RegisterBailleurDocsScreen pour les documents
 
-
-import 'package:flutter/foundation.dart';
+import 'package:mon_coloc/screens/home_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +11,7 @@ import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/auth_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_bailleur_docs_screen.dart';
+import 'package:mon_coloc/screens/bailleur/attente_validation_screen.dart';
 // Import pour la compression
 
 class RegisterBailleurScreen extends StatefulWidget {
@@ -64,30 +64,39 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
     super.dispose();
   }
 
-  void _soumettre() {
+  Future<void> _soumettre() async {
     if (!_cleForm.currentState!.validate()) return;
 
-    setState(() {
-      _nom = _nomCtrl.text.trim();
-      _prenom = _prenomCtrl.text.trim();
-      _email = _emailCtrl.text.trim();
-      _motDePasse = _mdpCtrl.text;
-      _telephone = _telCtrl.text.trim();
-    });
+    _nom = _nomCtrl.text.trim();
+    _prenom = _prenomCtrl.text.trim();
+    _email = _emailCtrl.text.trim();
+    _motDePasse = _mdpCtrl.text;
+    _telephone = _telCtrl.text.trim();
 
     // Rediriger vers l'écran de documents
-    Navigator.of(context).push(
+    final bool? inscriptionFinalisee = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => RegisterBailleurDocsScreen(
-          onFinaliser: _finaliserInscription,
-          onRetour: () => Navigator.of(context).pop(),
+          onFinaliser: () async {
+            // On passe un callback qui déclenche la finalisation et renvoie `true`
+            // Le pop est géré dans _finaliserInscription après la redirection
+            final success = await _finaliserInscription();
+            if (mounted && success) {
+              if (Navigator.canPop(context)) {
+                Navigator.of(context).pop(true);
+              }
+            }
+          },
+          onRetour: () {
+            if (Navigator.canPop(context)) Navigator.of(context).pop();
+          },
           onFichiersChanges: _onFichiersChanges,
         ),
       ),
     );
   }
 
-  Future<void> _finaliserInscription() async {
+  Future<bool> _finaliserInscription() async {
     setState(() => _enChargement = true);
 
     User? firebaseUser; // Déclarer pour qu'il soit accessible dans le catch
@@ -113,13 +122,16 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       // 3. Sauvegarde dans Firestore
       await _userService.sauvegarderUtilisateur(user);
 
-      if (!mounted) return;
+      if (!mounted) return false;
 
-      // 4. Retour à l'écran d'accueil (pop jusqu'à la racine)
-      Navigator.of(context).popUntil((route) => route.isFirst);
-      widget.onInscriptionTerminee();
+      // Redirection explicite immédiate vers l'écran d'accueil
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (Route<dynamic> route) => false,
+      );
+      return true;
     } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _enChargement = false);
       String message;
       switch (e.code) {
@@ -137,8 +149,9 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       }
 
       _afficherErreur(message);
+      return false;
     } catch (e, stackTrace) {
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _enChargement = false);
 
       // Log détaillé de l'erreur dans la console
@@ -162,7 +175,17 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       // Afficher l'erreur brute dans un SnackBar
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Erreur inscription : $e')));
+      ).showSnackBar(SnackBar(
+          content:
+              Text('Une erreur est survenue lors de la finalisation: $e')));
+      return false;
+    } finally {
+      // Assure que l'indicateur de chargement est toujours retiré.
+      if (mounted) {
+        setState(() {
+          _enChargement = false;
+        });
+      }
     }
   }
 
@@ -175,21 +198,10 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
 
     for (final doc in fichiersValides) {
       // Sur le Web, on doit impérativement avoir des bytes
-      final bytes = doc.bytes;
-      final chemin = kIsWeb ? null : doc.chemin;
-
-      if (bytes == null && chemin == null) {
-        debugPrint(
-          'Fichier ignoré : aucun contenu disponible (bytes et chemin sont nulls).',
-        );
-        continue;
-      }
-
       final url = await _userService.televerserJustificatifBailleur(
         uid: uid,
         nom: doc.nom,
-        bytes: bytes,
-        chemin: chemin,
+        bytes: doc.bytes,
         compresserImage: true, // Activer la compression pour les images
       );
       documentsUrls.add(url);
@@ -224,6 +236,7 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       besoinSilence: false, // Ajouté
       horaireRevision: HoraireRevision.flexible,
       documentsUrls: documentsUrls,
+      statutVerification: 'en_attente', // Important pour la validation admin
     );
   }
 
@@ -257,7 +270,9 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                     Row(
                       children: [
                         IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () {
+                            if (Navigator.canPop(context)) Navigator.of(context).pop();
+                          },
                           icon: const Icon(Icons.arrow_back_rounded, size: 24),
                           style: IconButton.styleFrom(
                             backgroundColor:
@@ -385,7 +400,7 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                       child: FilledButton(
                         onPressed: _soumettre,
                         style: FilledButton.styleFrom(
-                          shape: RoundedRectangleBorder(
+                        shape: RoundedRectangleBorder( 
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
@@ -456,10 +471,8 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
                         children: [
                           CircularProgressIndicator(),
                           SizedBox(height: 16),
-                          Text(
-                            'Création de votre compte…',
-                            style: TextStyle(fontSize: 15),
-                          ),
+                          Text('Finalisation de votre compte en cours...',
+                              style: TextStyle(fontSize: 15)),
                         ],
                       ),
                     ),

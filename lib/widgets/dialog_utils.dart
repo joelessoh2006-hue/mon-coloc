@@ -55,7 +55,7 @@ void afficherDialogueSignalement(
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
-                    value: motifSelectionne,
+                    initialValue: motifSelectionne,
                     isExpanded: true,
                     items: motifs.map((motif) {
                       return DropdownMenuItem(value: motif, child: Text(motif));

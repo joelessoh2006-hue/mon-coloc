@@ -42,6 +42,14 @@ class AdminLogementCard extends StatelessWidget {
     return [];
   }
 
+  // Nettoie la chaîne Base64 pour retirer l'en-tête Data URL.
+  String _nettoyerBase64(String input) {
+    if (input.contains(',')) {
+      return input.split(',').last;
+    }
+    return input;
+  }
+
   @override
   Widget build(BuildContext context) {
     final loyer = data['loyer'] ?? 0;
@@ -124,10 +132,13 @@ class AdminLogementCard extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            base64Decode(photos[index]),
+                          child: Image.memory( // Correction ici
+                            base64Decode(_nettoyerBase64(photos[index])),
                             fit: BoxFit.cover,
                             width: double.infinity,
+                            errorBuilder: (context, error, stackTrace) => const Center(
+                              child: Icon(Icons.broken_image_rounded, color: Colors.grey),
+                            ),
                           ),
                         ),
                       ),

@@ -49,7 +49,7 @@ class _RegisterStep2ScreenState extends State<RegisterStep2Screen> {
 
   // Ajout pour la sélection de photos
   final ImagePicker _picker = ImagePicker();
-  List<XFile> _selectedPhotos = [];
+  final List<XFile> _selectedPhotos = [];
   static const int _maxPhotos = 5;
 
 

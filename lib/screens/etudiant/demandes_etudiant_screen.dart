@@ -51,12 +51,33 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
       bailleurUid: demandeData['bailleurId'] as String,
       etudiantUid: _currentUser.uid,
       typePaiement: 'acompte_reservation',
-      onSuccess: () {
-        // Le service s'occupe de tout (mise à jour DB, SnackBar, PDF).
-        // Le callback onSuccess peut être utilisé pour rafraîchir l'état local
-        // si nécessaire, mais ici le StreamBuilder s'en chargera.
-        if (mounted) {
-          // On pourrait par exemple remonter à l'écran précédent.
+      onSuccess: () async {
+        // Le service Paystack gère la création de la transaction,
+        // mais nous effectuons les mises à jour de statut ici pour
+        // garantir une exécution atomique.
+        try {
+          final batch = FirebaseFirestore.instance.batch();
+
+          // 1. Mise à jour de la demande de réservation
+          final demandeRef = FirebaseFirestore.instance
+              .collection('demandes_reservation')
+              .doc(demandeId);
+          batch.update(demandeRef, {'statut': 'payee'});
+
+          // 2. Mise à jour du logement
+          if (logementId != null && logementId.isNotEmpty) {
+            final logementRef = FirebaseFirestore.instance
+                .collection('logements')
+                .doc(logementId);
+            batch.update(logementRef, {
+              'statut': 'reserve',
+              'estDisponible': false,
+            });
+          }
+
+          await batch.commit();
+        } catch (e) {
+          debugPrint("Erreur lors de la mise à jour des statuts : $e");
         }
       },
     );
@@ -69,7 +90,7 @@ class _DemandesEtudiantScreenState extends State<DemandesEtudiantScreen> {
     try {
       final transactionSnapshot = await FirebaseFirestore.instance
           .collection('transactions')
-          .where('etudiantUid', isEqualTo: _currentUser!.uid)
+          .where('etudiantUid', isEqualTo: _currentUser.uid)
           .where('logementId', isEqualTo: logementId)
           .where('typePaiement', isEqualTo: 'acompte_reservation')
           .orderBy('date', descending: true)

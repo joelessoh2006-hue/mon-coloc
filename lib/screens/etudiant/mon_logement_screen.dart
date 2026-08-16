@@ -6,8 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/services/user_service.dart';
-import 'package:mon_coloc/screens/mon_profil_screen.dart';
-import 'package:mon_coloc/screens/etudiant/mes_loyers_screen.dart';
 
 /// Écran "Mon Logement" pour les étudiants ayant déjà un logement.
 /// Permet de uploader des photos, voir/modifier les infos du logement.
@@ -43,10 +41,13 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
   // --- NOUVEAU : Répartition du loyer ---
   /// ID de la conversation de l'équipe
   String? _conversationId;
+
   /// Nombre de membres dans l'équipe
   int _nombreMembresEquipe = 1;
+
   /// Mode de répartition ('equitable' ou 'custom')
   bool _repartitionEquitable = true;
+
   /// Contrôleur pour la part fixe du candidat en mode custom
   final _partFixeCandidatController = TextEditingController();
 
@@ -110,17 +111,17 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
           _utilisateur = currentUser;
           _afficheLogementCoequipier = false;
           _chargement = false;
-          if (currentUser != null) {
-            _initialiserChamps(currentUser);
-            _chargerInfosEquipe(uid);
-          }
+          _initialiserChamps(currentUser);
+          _chargerInfosEquipe(uid);
         });
       }
     }
   }
 
   /// Cherche un coéquipier avec un logement dans une équipe validée.
-  Future<UserModel?> _trouverCoequipierAvecLogement(String currentUserUid) async {
+  Future<UserModel?> _trouverCoequipierAvecLogement(
+    String currentUserUid,
+  ) async {
     final query = await _firestore
         .collection('conversations')
         .where('membres', arrayContains: currentUserUid)
@@ -132,7 +133,10 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
     final conversation = query.docs.first;
     final membres = List<String>.from(conversation.data()['membres'] ?? []);
-    final autreMembreUid = membres.firstWhere((id) => id != currentUserUid, orElse: () => '');
+    final autreMembreUid = membres.firstWhere(
+      (id) => id != currentUserUid,
+      orElse: () => '',
+    );
 
     return await _userService.recupererUtilisateur(autreMembreUid);
   }
@@ -208,8 +212,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
       final index = currentPhotos.length;
 
       final url = await _userService.televerserPhotoLogement(
-          uid: uid,
-          imageFile: image,
+        uid: uid,
+        imageFile: image,
       );
 
       currentPhotos.add(url); // Ajoute la nouvelle URL à la liste
@@ -281,10 +285,10 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
 
   /// Sauvegarder les modifications des infos logement
   Future<void> _sauvegarderInfos() async {
-    final uid = _auth.currentUser?.uid; 
+    final uid = _auth.currentUser?.uid;
     if (uid == null || _conversationId == null) return;
 
-    setState(() => _sauvegardeEnCours = true); 
+    setState(() => _sauvegardeEnCours = true);
 
     try {
       await _userService.mettreAJourPartiel(
@@ -300,15 +304,20 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
       );
 
       // --- NOUVEAU : Sauvegarde des infos de répartition dans la conversation ---
-      final partFixe = int.tryParse(_partFixeCandidatController.text.trim()) ?? 0;
-      final loyerTotal = double.tryParse(_loyerTotalController.text.trim()) ?? 0;
+      final partFixe =
+          int.tryParse(_partFixeCandidatController.text.trim()) ?? 0;
+      final loyerTotal =
+          double.tryParse(_loyerTotalController.text.trim()) ?? 0;
       final partSuggeree = _calculerEtArrondirPartSuggeree(loyerTotal);
 
-      await _firestore.collection('conversations').doc(_conversationId!).update({
-        'modeRepartition': _repartitionEquitable ? 'equitable' : 'custom',
-        'partFixeCandidat': _repartitionEquitable ? partSuggeree : partFixe,
-        'logementQuartier': _quartierController.text.trim(),
-      });
+      await _firestore
+          .collection('conversations')
+          .doc(_conversationId!)
+          .update({
+            'modeRepartition': _repartitionEquitable ? 'equitable' : 'custom',
+            'partFixeCandidat': _repartitionEquitable ? partSuggeree : partFixe,
+            'logementQuartier': _quartierController.text.trim(),
+          });
 
       // Recharger les données pour refléter les changements
       await _chargerDonnees();
@@ -380,7 +389,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Titre
-              Text( 
+              Text(
                 _afficheLogementCoequipier ? 'Notre Logement' : 'Mon Logement',
                 style: theme.textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
@@ -388,12 +397,14 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              Text( 
-                _afficheLogementCoequipier ? 'Consultez les informations du logement de votre équipe.' : 'Gérez votre annonce et ses photos',
+              Text(
+                _afficheLogementCoequipier
+                    ? 'Consultez les informations du logement de votre équipe.'
+                    : 'Gérez votre annonce et ses photos',
                 style: TextStyle(fontSize: 14, color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
- 
+
               // Avertissement si aucune photo
               if (!hasPhotos && !_televersementEnCours)
                 Container(
@@ -429,7 +440,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 ),
               if (!hasPhotos && !_televersementEnCours)
                 const SizedBox(height: 24),
-              
+
               // Badge d'information si on affiche le logement du coéquipier
               if (_afficheLogementCoequipier && _prenomCoequipier != null)
                 Container(
@@ -445,7 +456,11 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.info_outline_rounded, color: theme.colorScheme.primary, size: 28),
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: theme.colorScheme.primary,
+                        size: 28,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -516,14 +531,11 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                                         final raw = user.logementPhotos[index];
                                         Uint8List? bytes;
                                         try {
-                                          if (raw.startsWith('data:image')) {
-                                            final base64Part = raw
-                                                .split(',')
-                                                .last;
-                                            bytes = base64Decode(base64Part);
-                                          } else {
-                                            bytes = base64Decode(raw);
-                                          }
+                                          // Nettoie la chaîne pour retirer un éventuel préfixe "data:image..."
+                                          final base64Part = raw.contains(',')
+                                              ? raw.split(',').last
+                                              : raw;
+                                          bytes = base64Decode(base64Part);
                                         } catch (_) {
                                           bytes = null;
                                         }
@@ -542,17 +554,16 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                                           fit: BoxFit.cover,
                                           width: 180,
                                           height: double.infinity,
-                                          errorBuilder: (_, _, _) =>
-                                              Container(
-                                                color: Colors.grey.shade200,
-                                                child: const Center(
-                                                  child: Icon(
-                                                    Icons.broken_image_rounded,
-                                                    size: 36,
-                                                    color: Colors.grey,
-                                                  ),
-                                                ),
+                                          errorBuilder: (_, _, _) => Container(
+                                            color: Colors.grey.shade200,
+                                            child: const Center(
+                                              child: Icon(
+                                                Icons.broken_image_rounded,
+                                                size: 36,
+                                                color: Colors.grey,
                                               ),
+                                            ),
+                                          ),
                                         );
                                       },
                                     ),
@@ -628,7 +639,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Quartier
                     TextField(
                       controller: _quartierController,
-                      enabled: _modificationActive && !_afficheLogementCoequipier,
+                      enabled:
+                          _modificationActive && !_afficheLogementCoequipier,
                       decoration: InputDecoration(
                         labelText: 'Quartier / Zone',
                         prefixIcon: const Icon(Icons.location_on_rounded),
@@ -642,7 +654,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Loyer total
                     TextField(
                       controller: _loyerTotalController,
-                      enabled: _modificationActive && !_afficheLogementCoequipier,
+                      enabled:
+                          _modificationActive && !_afficheLogementCoequipier,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Loyer total (FCFA)',
@@ -657,7 +670,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Part coloc
                     TextField(
                       controller: _partColocController,
-                      enabled: _modificationActive && !_afficheLogementCoequipier,
+                      enabled:
+                          _modificationActive && !_afficheLogementCoequipier,
                       keyboardType: TextInputType.number,
                       decoration: InputDecoration(
                         labelText: 'Part du colocataire (FCFA)',
@@ -672,7 +686,8 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                     // Description
                     TextField(
                       controller: _descriptionController,
-                      enabled: _modificationActive && !_afficheLogementCoequipier,
+                      enabled:
+                          _modificationActive && !_afficheLogementCoequipier,
                       maxLines: 3,
                       maxLength: 500,
                       textCapitalization: TextCapitalization.sentences,
@@ -855,7 +870,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 : (value) {
                     setState(() => _repartitionEquitable = value);
                   },
-            activeColor: theme.colorScheme.primary,
+            activeThumbColor: theme.colorScheme.primary,
             contentPadding: EdgeInsets.zero,
           ),
           const SizedBox(height: 12),
@@ -872,10 +887,7 @@ class _MonLogementScreenState extends State<MonLogementScreen> {
                 children: [
                   Text(
                     'Part suggérée pour le candidat :',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                   const SizedBox(height: 4),
                   Text(

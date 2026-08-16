@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
-import 'package:mon_coloc/screens/bailleur/attente_validation_screen.dart';
+import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/screens/bailleur/add_logement_screen.dart';
+import 'package:mon_coloc/screens/bailleur/attente_validation_screen.dart';
 import 'package:mon_coloc/screens/bailleur/bailleur_inbox_screen.dart';
 import 'package:mon_coloc/screens/bailleur/bailleur_visits_screen.dart';
 import 'package:mon_coloc/screens/bailleur/manage_logements_screen.dart';
@@ -14,14 +16,11 @@ import 'package:mon_coloc/screens/etudiant/logements_list_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_equipe_screen.dart';
 import 'package:mon_coloc/screens/etudiant/mon_logement_screen.dart';
 import 'package:mon_coloc/screens/mon_profil_screen.dart';
-import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/chat_service.dart';
 
 /// Écran d'accueil principal.
-/// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur).
-/// Pour les étudiants, s'adapte aussi selon `aDejaUnLogement` :
-/// - Si true : onglet "Logements" → "Mon logement"
-/// - Si false : onglet "Logements" normal (liste des logements disponibles)
+/// S'adapte dynamiquement selon le rôle de l'utilisateur (etudiant / bailleur / admin).
+/// Pour les étudiants, s'adapte aussi selon l'état de possession d'un logement.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -34,7 +33,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ChatService _chatService = ChatService();
 
-  /// Rôle de l'utilisateur : 'etudiant' ou 'bailleur'
+  /// Rôle de l'utilisateur : 'etudiant', 'bailleur' ou 'admin'
   String? _role;
 
   /// Chargement en cours
@@ -58,13 +57,16 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Étudiant chargé complètement
   UserModel? _currentUser;
 
+  /// Empêche de démarrer plusieurs fois les écouteurs temps réel
+  bool _ecoutesDemarrees = false;
+
   @override
   void initState() {
     super.initState();
     _recupererRole();
   }
 
-  /// Récupère le rôle de l'utilisateur depuis Firestore
+  /// Récupère le rôle et le statut de l'utilisateur depuis Firestore
   Future<void> _recupererRole() async {
     try {
       final user = _auth.currentUser;
@@ -82,7 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         _role = data['role'] as String? ?? 'etudiant';
-        _aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
+        _aDejaUnLogement = (data['aDejaUnLogement'] as bool? ?? false) ||
+            (data['statutLogement'] == 'aDejaUnLogement');
+
         await _verifierStatutLogementEquipe();
 
         // Construire l'UserModel complet
@@ -91,12 +95,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _role = 'etudiant';
       }
 
+      if (!mounted) return;
       setState(() => _chargement = false);
 
-      // Démarrer l'écoute des messages non lus si étudiant
+      // Démarrer l'écoute des messages non lus et des changements
+      // du profil utilisateur si étudiant.
       if (_role == 'etudiant') {
-        _ecouterNonLus();
-        _ecouterChangementsUtilisateur();
+        _demarrerEcoutesEtudiant();
       }
     } catch (e) {
       debugPrint('Erreur récupération rôle : $e');
@@ -105,9 +110,17 @@ class _HomeScreenState extends State<HomeScreen> {
           _role = 'etudiant';
           _chargement = false;
         });
-        _ecouterNonLus();
+        _demarrerEcoutesEtudiant();
       }
     }
+  }
+
+  /// Démarre les écouteurs temps réel propres à l'étudiant, une seule fois.
+  void _demarrerEcoutesEtudiant() {
+    if (_ecoutesDemarrees) return;
+    _ecoutesDemarrees = true;
+    _ecouterNonLus();
+    _ecouterChangementsUtilisateur();
   }
 
   /// Vérifie si un membre de l'équipe de l'utilisateur a un logement.
@@ -128,16 +141,30 @@ class _HomeScreenState extends State<HomeScreen> {
         .limit(1)
         .get();
 
-    if (querySnapshot.docs.isEmpty) return;
+    if (querySnapshot.docs.isEmpty) {
+      if (mounted) setState(() => _coequipierADejaUnLogement = false);
+      return;
+    }
 
     final conversation = querySnapshot.docs.first;
     final membresIds = List<String>.from(conversation.data()['membres'] ?? []);
-    final autreMembreId = membresIds.firstWhere((id) => id != user.uid, orElse: () => '');
+    final autreMembreId =
+        membresIds.firstWhere((id) => id != user.uid, orElse: () => '');
 
-    final autreMembreDoc = await _firestore.collection('users').doc(autreMembreId).get();
-    final autreMembreADejaLogement = autreMembreDoc.data()?['aDejaUnLogement'] as bool? ?? false;
+    if (autreMembreId.isEmpty) {
+      if (mounted) setState(() => _coequipierADejaUnLogement = false);
+      return;
+    }
 
-    if (mounted) setState(() => _coequipierADejaUnLogement = autreMembreADejaLogement);
+    final autreMembreDoc =
+        await _firestore.collection('users').doc(autreMembreId).get();
+    final autreMembreADejaLogement =
+        (autreMembreDoc.data()?['aDejaUnLogement'] as bool? ?? false) ||
+            (autreMembreDoc.data()?['statutLogement'] == 'aDejaUnLogement');
+
+    if (mounted) {
+      setState(() => _coequipierADejaUnLogement = autreMembreADejaLogement);
+    }
   }
 
   /// Écoute en temps réel les changements de l'utilisateur (pour mettre à jour aDejaUnLogement)
@@ -148,8 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _firestore.collection('users').doc(uid).snapshots().listen((doc) {
       if (!mounted) return;
 
-      // Si le document utilisateur n'existe plus ou si le compte est bloqué,
-      // on déconnecte l'utilisateur de force.
+      // Si le document utilisateur n'existe plus, on déconnecte de force.
       if (!doc.exists) {
         _deconnexionForcee("Votre compte utilisateur n'existe plus.");
         return;
@@ -161,24 +187,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (estBloque || status == 'bloque') {
         _deconnexionForcee("Votre compte a été bloqué par un administrateur.");
-        return; // Arrêter le traitement pour éviter des erreurs de setState
+        return;
       }
 
-      final aDejaUnLogement = data['aDejaUnLogement'] as bool? ?? false;
-      final shouldUpdateUser =
-          _currentUser == null ||
-          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
-          _currentUser!.justificatifIdentiteUrl != (data['justificatifIdentiteUrl'] as String?);
+      final aDejaUnLogement = (data['aDejaUnLogement'] as bool? ?? false) ||
+          (data['statutLogement'] == 'aDejaUnLogement');
 
-      if (aDejaUnLogement != _aDejaUnLogement || shouldUpdateUser || _coequipierADejaUnLogement) {
+      final justificatifDoc = (data['justificatifIdentiteUrl'] as String?) ??
+          (data['justificatifUrl'] as String?);
+
+      final shouldUpdateUser = _currentUser == null ||
+          _currentUser!.estVerifie != (data['estVerifie'] as bool? ?? false) ||
+          _currentUser!.justificatifIdentiteUrl != justificatifDoc;
+
+      if (aDejaUnLogement != _aDejaUnLogement ||
+          shouldUpdateUser ||
+          _coequipierADejaUnLogement) {
         setState(() {
           _aDejaUnLogement = aDejaUnLogement;
           if (shouldUpdateUser) {
             _currentUser = UserModel.fromFirestore(doc);
           }
-          // Revérifier le statut de l'équipe si le statut du logement de l'utilisateur change
-          _verifierStatutLogementEquipe();
         });
+        _verifierStatutLogementEquipe();
       }
     });
   }
@@ -213,26 +244,12 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Déconnecte l'utilisateur
   Future<void> _deconnexion() async {
     await _auth.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => LoginScreen(
-            onConnexionReussie: () {
-              // Callback appelé si l'utilisateur se re-connecte
-            },
-          ),
-        ),
-        (route) => false,
-      );
-    }
   }
 
   /// Déconnecte l'utilisateur de force et affiche un message.
   Future<void> _deconnexionForcee(String message) async {
-    // On s'assure que l'opération ne se fait qu'une fois si le listener se déclenche rapidement
     if (!mounted) return;
 
-    // Afficher le message d'avertissement
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -241,34 +258,31 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    // Déconnecter l'utilisateur
     await _auth.signOut();
 
-    // Rediriger vers l'écran de connexion
+    if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => LoginScreen(onConnexionReussie: () {})),
+      MaterialPageRoute(
+        builder: (context) => LoginScreen(onConnexionReussie: () {}),
+      ),
       (route) => false,
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Indicateur de chargement
     if (_chargement) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Interface selon le rôle
     if (_role == 'bailleur') {
       return _construireDashboardBailleur();
     }
 
-    // Admin : redirige vers le panel admin
     if (_role == 'admin') {
       return _construireDashboardAdmin();
     }
 
-    // Étudiant par défaut
     return _construireInterfaceEtudiant();
   }
 
@@ -276,13 +290,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // INTERFACE ÉTUDIANT
   // ---------------------------------------------------------------------------
   Widget _construireInterfaceEtudiant() {
+    final bool possedeLogement = _aDejaUnLogement || _coequipierADejaUnLogement;
+
     final pages = [
       _construirePageDecouvrir(),
       _construirePageMessagerie(),
-      // Si l'étudiant ou son coéquipier a un logement → "Mon logement", sinon → "Logements"
-      _aDejaUnLogement || _coequipierADejaUnLogement
-          ? _construirePageMonLogement()
-          : _construirePageLogements(),
+      possedeLogement ? _construirePageMonLogement() : _construirePageLogements(),
       _construirePageMonEquipe(),
       _construirePageMonProfil(),
     ];
@@ -313,9 +326,9 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           BottomNavigationBarItem(
             icon: Icon(
-              _aDejaUnLogement || _coequipierADejaUnLogement ? Icons.home_work_rounded : Icons.home_rounded,
+              possedeLogement ? Icons.home_work_rounded : Icons.home_rounded,
             ),
-            label: _aDejaUnLogement || _coequipierADejaUnLogement ? 'Mon logement' : 'Logements',
+            label: possedeLogement ? 'Mon logement' : 'Logements',
           ),
           const BottomNavigationBarItem(
             icon: Icon(Icons.group_rounded),
@@ -330,8 +343,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Construit l'icône "Messagerie" avec un badge numérique Flutter affichant
-  /// le nombre de messages non lus.
   Widget _buildMessagerieIconWithBadge() {
     return Badge(
       label: Text('${_nonLuCount > 99 ? '99+' : _nonLuCount}'),
@@ -345,7 +356,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return user != null &&
         user.role == 'etudiant' &&
         !user.estVerifie &&
-        (user.justificatifIdentiteUrl == null || user.justificatifIdentiteUrl!.isEmpty);
+        (user.justificatifIdentiteUrl == null ||
+            user.justificatifIdentiteUrl!.isEmpty);
   }
 
   Widget _buildVerificationAlert() {
@@ -378,93 +390,99 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _construirePageDecouvrir() {
-    return const DecouvrirScreen();
-  }
-
-  Widget _construirePageMessagerie() {
-    return const EtudiantMessagerieScreen();
-  }
-
-  Widget _construirePageMonEquipe() {
-    return const MonEquipeScreen();
-  }
-
-  Widget _construirePageLogements() {
-    return const LogementsListScreen();
-  }
-
-  Widget _construirePageMonLogement() {
-    return const MonLogementScreen();
-  }
-
-  Widget _construirePageMonProfil() {
-    return const MonProfilScreen();
-  }
+  Widget _construirePageDecouvrir() => const DecouvrirScreen();
+  Widget _construirePageMessagerie() => const EtudiantMessagerieScreen();
+  Widget _construirePageMonEquipe() => const MonEquipeScreen();
+  Widget _construirePageLogements() => const LogementsListScreen();
+  Widget _construirePageMonLogement() => const MonLogementScreen();
+  Widget _construirePageMonProfil() => const MonProfilScreen();
 
   // ---------------------------------------------------------------------------
   // INTERFACE BAILLEUR (DASHBOARD + ONGLETS)
   // ---------------------------------------------------------------------------
   Widget _construireDashboardBailleur() {
-    final pages = [
-      _construirePageBailleurAccueil(),
-      const BailleurInboxScreen(),
-      const BailleurVisitsScreen(),
-    ];
+    final user = _auth.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text("Utilisateur non connecté.")),
+      );
+    }
 
-    final titles = ['Espace Bailleur', 'Messagerie', 'Mes Visites'];
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _firestore.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Scaffold(
+            body: Center(child: Text("Profil introuvable.")),
+          );
+        }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          titles[_ongletBailleurActif],
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_rounded),
-            tooltip: 'Mon Profil',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const MonProfilScreen()),
-              );
-            },
+        final pages = [
+          _construirePageBailleurAccueil(),
+          const BailleurInboxScreen(),
+          const BailleurVisitsScreen(),
+        ];
+
+        final titles = ['Espace Bailleur', 'Messagerie', 'Mes Visites'];
+
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(
+              titles[_ongletBailleurActif],
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            centerTitle: true,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.person_rounded),
+                tooltip: 'Mon Profil',
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const MonProfilScreen(),
+                    ),
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout_rounded),
+                tooltip: 'Se déconnecter',
+                onPressed: _deconnexion,
+              ),
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Se déconnecter',
-            onPressed: _deconnexion,
+          body: pages[_ongletBailleurActif],
+          bottomNavigationBar: BottomNavigationBar(
+            currentIndex: _ongletBailleurActif,
+            onTap: (index) => setState(() => _ongletBailleurActif = index),
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: Theme.of(context).colorScheme.primary,
+            unselectedItemColor: Colors.grey,
+            items: [
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.dashboard_rounded),
+                label: 'Accueil',
+              ),
+              BottomNavigationBarItem(
+                icon: _buildBailleurMessagerieIconWithBadge(),
+                label: 'Messagerie',
+              ),
+              BottomNavigationBarItem(
+                label: 'Visites',
+                icon: _buildBailleurVisitesIconWithBadge(),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: pages[_ongletBailleurActif],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _ongletBailleurActif,
-        onTap: (index) => setState(() => _ongletBailleurActif = index),
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_rounded),
-            label: 'Accueil',
-          ),
-          BottomNavigationBarItem(
-            icon: _buildBailleurMessagerieIconWithBadge(),
-            label: 'Messagerie',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            label: 'Visites',
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  /// Construit l'icône "Messagerie" du bailleur avec un badge rouge
-  /// indiquant le nombre de messages non lus.
   Widget _buildBailleurMessagerieIconWithBadge() {
     return StreamBuilder<QuerySnapshot>(
       stream: _chatService.ecouterConversations(),
@@ -493,7 +511,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Page d'accueil du bailleur avec les actions principales.
+  Widget _buildBailleurVisitesIconWithBadge() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return const Icon(Icons.calendar_month_rounded);
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('visites')
+          .where('bailleurId', isEqualTo: uid)
+          .where('status', isEqualTo: 'en_attente')
+          .snapshots(),
+      builder: (context, snapshot) {
+        int count = 0;
+        if (snapshot.hasData) {
+          count = snapshot.data!.docs.length;
+        }
+
+        return Badge(
+          label: Text('$count'),
+          isLabelVisible: count > 0,
+          child: const Icon(Icons.calendar_month_rounded),
+        );
+      },
+    );
+  }
+
   Widget _construirePageBailleurAccueil() {
     final theme = Theme.of(context);
 
@@ -519,8 +561,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 40),
-
-            // Bouton : Ajouter un nouveau logement
             SizedBox(
               width: double.infinity,
               child: _boutonAction(
@@ -533,41 +573,39 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(height: 20),
-
-            // Bouton : Gérer mes annonces
             StreamBuilder<QuerySnapshot>(
-                stream: _firestore
-                    .collection('demandes_reservation')
-                    .where('bailleurId', isEqualTo: _auth.currentUser?.uid)
-                    .where('statut', isEqualTo: 'en_attente')
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final count = snapshot.data?.docs.length ?? 0;
+              stream: _firestore
+                  .collection('demandes_reservation')
+                  .where('bailleurId', isEqualTo: _auth.currentUser?.uid)
+                  .where('statut', isEqualTo: 'en_attente')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
 
-                  return Badge(
-                    label: Text('$count'),
-                    isLabelVisible: count > 0,
-                    largeSize: 24,
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: _boutonAction(
-                        theme: theme,
-                        icone: Icons.business_center_rounded,
-                        titre: 'Gérer mes annonces',
-                        description:
-                            'Consultez et modifiez vos annonces actives',
-                        couleur: const Color(0xFF7C3AED),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const ManageLogementsScreen(),
-                            ),
-                          );
-                        },
-                      ),
+                return Badge(
+                  label: Text('$count'),
+                  isLabelVisible: count > 0,
+                  largeSize: 24,
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: _boutonAction(
+                      theme: theme,
+                      icone: Icons.business_center_rounded,
+                      titre: 'Gérer mes annonces',
+                      description: 'Consultez et modifiez vos annonces actives',
+                      couleur: const Color(0xFF7C3AED),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ManageLogementsScreen(),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                }),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -577,13 +615,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // ---------------------------------------------------------------------------
   // INTERFACE ADMIN
   // ---------------------------------------------------------------------------
-  Widget _construireDashboardAdmin() {    
+  Widget _construireDashboardAdmin() {
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        automaticallyImplyLeading: false, // Pour ne pas avoir de bouton retour
-        title: const Text( 
+        automaticallyImplyLeading: false,
+        title: const Text(
           '🛡️ Espace Admin',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
@@ -604,7 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout_rounded),
             tooltip: 'Se déconnecter',
-            onPressed: _deconnexion, // Appelle _auth.signOut()
+            onPressed: _deconnexion,
           ),
         ],
       ),
@@ -624,7 +662,7 @@ class _HomeScreenState extends State<HomeScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: couleur.withOpacity(0.3)),
+        side: BorderSide(color: couleur.withValues(alpha: 0.3)),
       ),
       child: InkWell(
         onTap: onPressed,
@@ -637,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: couleur.withOpacity(0.1),
+                color: couleur.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(icone, size: 28, color: couleur),
@@ -675,18 +713,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onAddLogementPressed(BuildContext context) {
-    // Vérifier si le bailleur est vérifié avant de le laisser publier
     if (_currentUser?.estVerifie == true) {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const AddLogementScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const AddLogementScreen()),
       );
     } else {
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const AttenteValidationScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const AttenteValidationScreen()),
       );
     }
   }

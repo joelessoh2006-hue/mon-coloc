@@ -4,7 +4,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:mon_coloc/screens/home_screen.dart';
 import 'package:intl/intl.dart';
 
 class RegisterStep1Screen extends StatefulWidget {

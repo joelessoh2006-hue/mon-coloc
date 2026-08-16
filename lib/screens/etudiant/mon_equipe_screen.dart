@@ -176,10 +176,12 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
     QueryDocumentSnapshot? conversationAcceptee,
     List<QueryDocumentSnapshot> demandesRecues,
   ) {
+    final String currentUserId = currentUser.uid;
     final bool aBinome = conversationAcceptee != null;
 
     return RefreshIndicator(
       onRefresh: () async {
+        _cacheInfos.clear(); // Vider le cache pour rafraîchir les données
         setState(() {});
       },
       child: ListView(
@@ -214,6 +216,13 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
               (doc) => _buildDemandeRecueCard(currentUser, doc),
             ),
           ],
+
+          // ================================================================
+          // MES CANDIDATURES ENVOYÉES (si pas de binôme)
+          // ================================================================
+          if (!aBinome)
+            _buildMesCandidaturesSection(currentUserId),
+
 
           // ================================================================
           // ÉTAT SANS BINÔME ET SANS DEMANDE
@@ -831,6 +840,150 @@ class _MonEquipeScreenState extends State<MonEquipeScreen> {
   }
 
   // ---------------------------------------------------------------------------
+  // SECTION MES CANDIDATURES
+  // ---------------------------------------------------------------------------
+
+  /// Construit la section affichant les candidatures envoyées par l'utilisateur.
+  Widget _buildMesCandidaturesSection(String currentUserId) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('conversations')
+          .where('candidatures.$currentUserId.statut', isEqualTo: 'en_attente')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const SizedBox.shrink(); // Ne rien afficher si pas de candidatures
+        }
+
+        final candidatures = snapshot.data!.docs;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Divider(height: 1, thickness: 1),
+            const SizedBox(height: 24),
+            _buildSectionHeader(
+              icon: Icons.outgoing_mail,
+              title: 'Mes candidatures envoyées',
+              subtitle: 'Suivez le statut de vos propositions de colocation',
+            ),
+            const SizedBox(height: 12),
+            ...candidatures.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              final candidatureData =
+                  data['candidatures'][currentUserId] as Map<String, dynamic>;
+              return _buildCandidatureEnvoyeeCard(
+                  doc.id, candidatureData, data);
+            }),
+            const SizedBox(height: 24),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Construit une carte pour une candidature envoyée.
+  Widget _buildCandidatureEnvoyeeCard(String conversationId,
+      Map<String, dynamic> candidatureData, Map<String, dynamic> convData) {
+    final membresEquipe = List<String>.from(convData['membres'] ?? []);
+    final date = (candidatureData['date'] as Timestamp?)?.toDate();
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: Colors.grey.shade200),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FutureBuilder<Map<String, Map<String, dynamic>?>>(
+              future: _recupererInfosMultiplesUtilisateurs(membresEquipe),
+              builder: (context, snapshot) {
+                final noms = snapshot.data?.values
+                        .map((info) => info?['prenom'] as String? ?? 'Membre')
+                        .join(' & ') ??
+                    'Équipe';
+                return Text(
+                  'Équipe de $noms',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1E3A5F),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Chip(
+                  label: Text('En attente',
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
+                  backgroundColor: Colors.orange,
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                ),
+                const Spacer(),
+                if (date != null)
+                  Text(
+                    'Envoyée le ${date.day}/${date.month}/${date.year}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  _annulerCandidature(conversationId, _auth.currentUser!.uid);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Candidature annulée.'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.cancel_outlined, size: 18),
+                label: const Text('Annuler la candidature'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red.shade700,
+                  side: BorderSide(color: Colors.red.shade200),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Annule une candidature en mettant à jour son statut dans Firestore.
+  Future<void> _annulerCandidature(
+      String conversationId, String userId) async {
+    try {
+      await _firestore
+          .collection('conversations')
+          .doc(conversationId)
+          .update({'candidatures.$userId.statut': 'annulee'});
+    } catch (e) {
+      debugPrint("Erreur lors de l'annulation de la candidature: $e");
+      // Optionnel : afficher un message d'erreur à l'utilisateur
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // NAVIGATION
   // ---------------------------------------------------------------------------
 
@@ -872,7 +1025,7 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
   final List<String> membres;
   MatchingService get _matchingService => MatchingService();
 
-  _CandidaturesRecuesWidget({
+  const _CandidaturesRecuesWidget({
     required this.conversationId,
     required this.membres,
   });
@@ -923,6 +1076,21 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
     );
   }
 
+  /// Ouvre l'écran de détail du profil pour un candidat.
+  void _voirProfilCandidat(BuildContext context, String candidatId) async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(candidatId).get();
+      if (doc.exists && context.mounted) {
+        final userData = doc.data()!;
+        userData['uid'] = candidatId; // Assurer que l'UID est présent
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ProfileDetailScreen(userData: userData)),
+        );
+      }
+    } catch (e) {
+      // Gérer l'erreur si nécessaire
+    }
+  }
   Widget _buildCandidatCard(
     BuildContext context,
     String candidatId,
@@ -948,8 +1116,9 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
                   .doc(candidatId)
                   .get(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData || !snapshot.data!.exists)
+                if (!snapshot.hasData || !snapshot.data!.exists) {
                   return const LinearProgressIndicator();
+                }
                 final candidatData =
                     snapshot.data!.data() as Map<String, dynamic>;
                 final prenom = candidatData['prenom'] as String? ?? 'Candidat';
@@ -1004,6 +1173,19 @@ class _CandidaturesRecuesWidget extends StatelessWidget {
             const SizedBox(height: 4),
             Text(message.isNotEmpty ? '"$message"' : 'Aucun message.'),
             const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _voirProfilCandidat(context, candidatId),
+                icon: const Icon(Icons.person_search_rounded, size: 18),
+                label: const Text('Voir le profil du candidat'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  side: BorderSide(color: Theme.of(context).colorScheme.primary.withOpacity(0.5)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -1117,7 +1299,7 @@ class _SondageColocWidgetState extends State<SondageColocWidget> {
 
       // Après le vote, vérifier si tout le monde a voté pour traiter le résultat
       final doc = await docRef.get();
-      final data = doc.data() as Map<String, dynamic>?;
+      final data = doc.data();
       if (data != null) {
         await _traiterResultatSondage(docRef, data);
       }

@@ -92,124 +92,148 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = _auth.currentUser;
+    return StreamBuilder<User?>(
+      stream: _auth.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
 
-    if (currentUser == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'Utilisateur non connecté',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
-          ),
-        ),
-      );
-    }
+        final currentUser = snapshot.data;
 
-    final theme = Theme.of(context);
-
-    // Si l'utilisateur a déjà un logement : pas de sous-onglets, affiche uniquement les étudiants sans logement
-    if (_currentUserModel?.aDejaUnLogement == true) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'Découvrir',
-            style: TextStyle(fontWeight: FontWeight.w700),
-          ),
-          centerTitle: true,
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          foregroundColor: const Color(0xFF1E3A5F),
-        ),
-        body: _buildStudentList(currentUser.uid, filtrerSansLogement: true),
-      );
-    }
-
-    // Étudiant SANS logement : affiche les sous-onglets
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Découvrir',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: const Color(0xFF1E3A5F),
-      ),
-      body: Column(
-        children: [
-          // Sous-onglets
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.grey.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _sousOngletActif = 0),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _sousOngletActif == 0
-                            ? theme.colorScheme.primary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Sans logement',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _sousOngletActif == 0
-                              ? Colors.white
-                              : Colors.grey[600],
-                        ),
-                      ),
-                    ),
-                  ),
+        if (currentUser == null) {
+          return const Scaffold(
+            body: Center(
+              child: Padding(
+                padding: EdgeInsets.all(32),
+                child: Text(
+                  'Utilisateur non connecté',
+                  style: TextStyle(fontSize: 16, color: Colors.grey),
                 ),
-                if (_peutVoirOngletAvecLogement)
-                  Expanded(
-                  child: GestureDetector(
-                    onTap: () => setState(() => _sousOngletActif = 1),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _sousOngletActif == 1
-                            ? theme.colorScheme.primary
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'Avec logement',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: _sousOngletActif == 1
-                              ? Colors.white
-                              : Colors.grey[600],
+              ),
+            ),
+          );
+        }
+
+        // Si le modèle utilisateur n'est pas encore chargé, on affiche un loader
+        // et on s'assure que le chargement est en cours.
+        if (_currentUserModel == null) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final theme = Theme.of(context);
+
+        // Si l'utilisateur a déjà un logement : pas de sous-onglets, affiche uniquement les étudiants sans logement
+        if (_currentUserModel?.aDejaUnLogement == true) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text(
+                'Découvrir',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              centerTitle: true,
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              foregroundColor: const Color(0xFF1E3A5F),
+            ),
+            body: _buildStudentList(currentUser.uid, filtrerSansLogement: true),
+          );
+        }
+
+        // Étudiant SANS logement : affiche les sous-onglets
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'Découvrir',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+            centerTitle: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            foregroundColor: const Color(0xFF1E3A5F),
+          ),
+          body: Column(
+            children: [
+              // Sous-onglets
+              Container(
+                margin:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.grey.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _sousOngletActif = 0),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _sousOngletActif == 0
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Sans logement',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _sousOngletActif == 0
+                                  ? Colors.white
+                                  : Colors.grey[600],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  ),
-              ],
-            ),
+                    if (_peutVoirOngletAvecLogement)
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _sousOngletActif = 1),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _sousOngletActif == 1
+                                  ? theme.colorScheme.primary
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Avec logement',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: _sousOngletActif == 1
+                                    ? Colors.white
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Liste des étudiants filtrée
+              Expanded(
+                child: _sousOngletActif == 0
+                    ? _buildStudentList(currentUser.uid,
+                        filtrerSansLogement: true)
+                    : _buildStudentList(currentUser.uid,
+                        filtrerAvecLogement: true),
+              ),
+            ],
           ),
-          // Liste des étudiants filtrée
-          Expanded(
-            child: _sousOngletActif == 0
-                ? _buildStudentList(currentUser.uid, filtrerSansLogement: true)
-                : _buildStudentList(currentUser.uid, filtrerAvecLogement: true),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -850,27 +874,32 @@ class _DecouvrirScreenState extends State<DecouvrirScreen>
     final currentUserUid = _auth.currentUser?.uid;
     if (currentUserUid == null) return [];
 
-    try {
-      final querySnapshot = await FirebaseFirestore.instance
-          .collection('conversations')
-          .where('rechercheColocActive', isEqualTo: true)
-          .get();
-
-      // Filtrer les équipes :
-      // 1. Doivent avoir moins de 3 membres (une place disponible).
-      // 2. Exclure le propre duo de l'utilisateur.
-      final docs = querySnapshot.docs.where((doc) {
-        final data = doc.data() as Map<String, dynamic>?;
-        final membres = List<String>.from(data?['membres'] ?? []);
-        final aUnePlace = membres.length < 3;
-        return aUnePlace && !membres.contains(currentUserUid);
-      }).toList();
-
-      return docs;
-    } catch (e) {
-      debugPrint("Erreur equipes: $e");
-      return [];
-    }
+     try {
+       final querySnapshot = await FirebaseFirestore.instance
+           .collection('conversations')
+           .where('rechercheColocActive', isEqualTo: true)
+           .get();
+ 
+       // Filtrer les équipes :
+       // 1. Doivent avoir moins de 3 membres (une place disponible).
+       // 2. Exclure le propre duo de l'utilisateur.
+       // 3. Exclure les duos auxquels l'utilisateur a déjà postulé.
+       return querySnapshot.docs.where((doc) {
+         final data = doc.data() as Map<String, dynamic>?;
+         if (data == null) return false;
+ 
+         final membres = List<String>.from(data['membres'] ?? []);
+         final aUnePlace = membres.length < 3;
+         if (!aUnePlace || membres.contains(currentUserUid)) {
+           return false;
+         }
+ 
+         return true;
+       }).toList();
+     } catch (e) {
+       debugPrint("Erreur ou restriction de droits sur 'conversations': $e");
+       return []; // Retourne une liste vide au lieu de faire planter la page
+     }
   }
 
   /// Récupère les infos de plusieurs utilisateurs avec un système de cache.

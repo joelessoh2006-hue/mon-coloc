@@ -1,13 +1,13 @@
 // Page d'inscription progressive pour les étudiants uniquement
 // Orchestre : Firebase Auth (étape 1) + collecte des infos → création UserModel → Firestore
 // Le rôle est passé en paramètre depuis RoleSelectionScreen
-import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mon_coloc/utils/image_utils.dart';
+
 import 'package:mon_coloc/services/auth_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 import 'package:mon_coloc/screens/auth/register_step1_screen.dart';
@@ -181,25 +181,29 @@ class _RegisterPageState extends State<RegisterPage> {
     await _finaliserInscription();
   }
 
-  /// Compresse et encode une liste d'images en Base64.
-  Future<List<String>> _processerPhotosLogement(List<XFile> files) async {
-    List<String> base64Images = [];
-    for (var file in files) {
+  /// Téléverse les photos de logement sur Firebase Storage et retourne les URLs.
+  Future<List<String>> _televerserPhotosLogement(
+    String uid,
+    List<XFile> imageFiles,
+  ) async {
+    List<String> urls = [];
+
+    for (var imageFile in imageFiles) {
       try {
-        final bytes = await file.readAsBytes();
-        // Note: Une compression plus agressive pourrait être faite ici avec le package 'image'
-        // Pour l'instant, on se contente de l'encodage.
-        final base64String = base64Encode(bytes);
-        base64Images.add('data:image/jpeg;base64,$base64String');
+        final bytes = await imageFile.readAsBytes();
+        // Utilisation de ImageUtils pour compresser et encoder en Base64
+        final url = ImageUtils.compressAndEncodeBase64(bytes);
+        if (url.isNotEmpty) {
+        urls.add(url);
+        }
       } catch (e) {
-        debugPrint("Erreur d'encodage d'image : $e");
-        // On pourrait choisir d'ignorer l'image ou de logger l'erreur.
+        debugPrint("Erreur lors de la compression/encodage de l'image de logement : $e");
       }
     }
-    return base64Images;
+    return urls;
   }
 
-  /// Crée le compte Firebase + Firestore pour l'étudiant
+/// Crée le compte Firebase + Firestore pour l'étudiant
   Future<void> _finaliserInscription() async {
     setState(() => _enChargement = true);
 
@@ -220,9 +224,9 @@ class _RegisterPageState extends State<RegisterPage> {
       final aDejaUnLogement = _statutLogement == StatutLogement.aDejaUnLogement;
 
       // Traiter les photos si l'utilisateur a un logement
-      final photosEncodees = aDejaUnLogement
-          ? await _processerPhotosLogement(_logementPhotosFiles)
-          : <String>[];
+      final logementPhotosUrls = aDejaUnLogement
+          ? await _televerserPhotosLogement(firebaseUser.uid, _logementPhotosFiles)
+          : <String>[]; // Liste vide si pas de logement
 
       // Étudiant : inscription complète avec toutes les données
       final user = UserModel(
@@ -253,24 +257,27 @@ class _RegisterPageState extends State<RegisterPage> {
         logementLoyerTotal: aDejaUnLogement ? _logementLoyerTotal : null,
         logementPartColoc: aDejaUnLogement ? _logementPartColoc : null,
         logementDescription: aDejaUnLogement ? _logementDescription : null,
-        logementPhotos: photosEncodees,
+        logementPhotos: logementPhotosUrls,
         dateNaissance: _dateNaissance,
+        statutVerification: 'en_attente',
+        justificatifIdentiteUrl: '',
+        justificatifBailUrl: '',
+        justificatifLoyerUrl: '',
         age: _age,
       );
 
       // 2. Sauvegarde des données dans Firestore
       await _userService.sauvegarderUtilisateur(user);
 
-      // 3. Redirection directe vers l'écran d'accueil en cas de SUCCÈS
-      if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-          (Route<dynamic> route) => false,
-        );
-      }
+      if (!mounted) return;
+
+      // Redirection explicite immédiate vers l'écran d'accueil
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const HomeScreen()),
+        (Route<dynamic> route) => false,
+      );
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      setState(() => _enChargement = false);
 
       String message;
       switch (e.code) {
@@ -296,7 +303,8 @@ class _RegisterPageState extends State<RegisterPage> {
       );
     } catch (e, stackTrace) {
       if (!mounted) return;
-      setState(() => _enChargement = false);
+
+      debugPrint('Erreur inscription (détaillée) : $e\n$stackTrace');
 
       String messageErreur;
       try {
@@ -311,8 +319,6 @@ class _RegisterPageState extends State<RegisterPage> {
         messageErreur = e.toString();
       }
 
-      debugPrint('Erreur inscription (détaillée) : $e\n$stackTrace');
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Erreur : $messageErreur'),
@@ -320,10 +326,15 @@ class _RegisterPageState extends State<RegisterPage> {
           backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
+    } finally {
+      // Assure que l'indicateur de chargement est toujours retiré si on reste sur l'écran.
+      if (mounted) {
+        setState(() {
+          _enChargement = false;
+        });
+      }
     }
-  }
-
-  @override
+  }  @override
   Widget build(BuildContext context) {
     return Stack(
       children: [

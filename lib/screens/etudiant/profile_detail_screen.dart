@@ -189,7 +189,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             const SizedBox(height: 8),
 
             // --- Section "À propos" (commune à tous les rôles) ---
-            if (_user.biographie != null && _user.biographie!.isNotEmpty) ...[
+            if (_user.biographie.isNotEmpty) ...[
               _buildSection(
                 theme: theme,
                 icon: Icons.person_outline_rounded,
@@ -200,7 +200,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                     vertical: 8,
                   ),
                   child: Text(
-                    _user.biographie!,
+                    _user.biographie,
                     style: const TextStyle(
                       fontSize: 15,
                       color: Color(0xFF37474F),
@@ -293,7 +293,6 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                 backgroundColor: theme.colorScheme.primary.withOpacity(0.12),
                 backgroundImage:
                     (() {
-                          if (photoUrl == null) return null;
                           try {
                             if (photoUrl.startsWith('data:image')) {
                               final base64Part = photoUrl.split(',').last;
@@ -312,16 +311,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
                           }
                         })()
                         as ImageProvider<Object>?,
-                child: photoUrl == null
-                    ? Text(
-                        prenom.isNotEmpty ? prenom[0].toUpperCase() : '?',
-                        style: TextStyle(
-                          fontSize: 42,
-                          fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
-                        ),
-                      )
-                    : null,
+                child: null,
               ),
 
               // Badge vérifié
@@ -356,7 +346,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
 
           // Nom et âge
           Text(
-            '$prenom $nom${age != null ? ', $age ans' : ''}',
+            '$prenom $nom${', $age ans'}',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w800,
@@ -396,7 +386,7 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
             ),
 
           // Filière
-          if (filiere != null && filiere.isNotEmpty) ...[
+          if (filiere.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
               filiere,
@@ -826,12 +816,11 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           ),
 
           // Niveau de sociabilité
-          if (_user.niveauSociabilite != null)
-            _buildHabitChip(
-              icon: Icons.people_rounded,
-              label: 'Sociabilité : ${_user.niveauSociabilite}/5',
-              color: const Color(0xFFE91E63),
-            ),
+          _buildHabitChip(
+            icon: Icons.people_rounded,
+            label: 'Sociabilité : ${_user.niveauSociabilite}/5',
+            color: const Color(0xFFE91E63),
+          ),
 
           // Mixité
           _buildHabitChip(
@@ -910,15 +899,15 @@ class _ProfileDetailScreenState extends State<ProfileDetailScreen> {
           const SizedBox(height: 12),
 
           // Type de logement
-          if (_user.typeLogement != null && _user.typeLogement!.isNotEmpty)
+          if (_user.typeLogement.isNotEmpty)
             _buildCriteriaRow(
               icon: Icons.home_rounded,
               label: 'Type de logement',
-              value: _user.typeLogement!,
+              value: _user.typeLogement,
               color: const Color(0xFF1565C0),
             ),
 
-          if (_user.typeLogement != null && _user.typeLogement!.isNotEmpty)
+          if (_user.typeLogement.isNotEmpty)
             const SizedBox(height: 12),
 
           // Statut logement

@@ -6,7 +6,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:mon_coloc/models/user_model.dart';
 import 'package:mon_coloc/screens/admin/admin_dashboard_screen.dart';
 import 'package:mon_coloc/screens/etudiant/demandes_etudiant_screen.dart';
-import 'package:mon_coloc/screens/auth/login_screen.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
 class MonProfilScreen extends StatefulWidget {
@@ -142,7 +141,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
     });
 
     try {
-      final url = await _userService.televerserPhotoProfil(
+      final url = await _userService.televerserPhotoProfil( // Appelle la méthode mise à jour
         uid: uid,
         imageFile: image,
       );
@@ -313,18 +312,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
   // ---------------------------------------------------------------------------
   Future<void> _deconnexion() async {
     await _auth.signOut();
-    if (mounted) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (context) => LoginScreen(
-            onConnexionReussie: () {
-              // Callback appelé si l'utilisateur se re-connecte
-            },
-          ),
-        ),
-        (route) => false,
-      );
-    }
+    // L'AuthWrapper s'occupera de la redirection vers LoginScreen.
   }
 
   // ---------------------------------------------------------------------------
@@ -408,8 +396,31 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
 
                   // --- SECTION 3 : Sécurité & Justificatifs ---
                   if (user.role != 'admin') ...[
-                    _buildSectionSecurite(user),
-                    const SizedBox(height: 16),
+                    StreamBuilder<DocumentSnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          // Créer un UserModel mis à jour à partir du stream
+                          final updatedUser = UserModel.fromFirestore(snapshot.data!);
+                          return Column(
+                            children: [
+                              _buildSectionSecurite(updatedUser),
+                              const SizedBox(height: 16),
+                            ],
+                          );
+                        }
+                        // Afficher l'ancienne version pendant le chargement du stream
+                        return Column(
+                          children: [
+                            _buildSectionSecurite(user),
+                            const SizedBox(height: 16),
+                          ],
+                        );
+                      },
+                    ),
                   ],
 
                   // --- SECTION 4 : Actions ---
@@ -470,19 +481,8 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
             CircleAvatar(
               radius: 60,
               backgroundColor: theme.colorScheme.primaryContainer,
-              backgroundImage: user.photoUrl != null
-                  ? NetworkImage(user.photoUrl!)
-                  : null,
-              child: user.photoUrl == null
-                  ? Text(
-                      initiale,
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onPrimaryContainer,
-                      ),
-                    )
-                  : null,
+              backgroundImage: NetworkImage(user.photoUrl),
+              child: null,
             ),
             // Bouton appareil photo
             Container(
@@ -747,7 +747,7 @@ class _MonProfilScreenState extends State<MonProfilScreen> {
           // Niveau de propreté
           DropdownButtonFormField<Proprete>(
             // Assurer que la valeur existe dans les items pour éviter une assertion error.
-            value: Proprete.values.contains(_proprete)
+            initialValue: Proprete.values.contains(_proprete)
                 ? _proprete
                 : Proprete.propre,
             decoration: InputDecoration(

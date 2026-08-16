@@ -161,7 +161,7 @@ class PdfService {
     // 4. Téléchargement direct du PDF
     await Printing.sharePdf(
       bytes: await pdf.save(),
-      filename: 'recu_acompte_${reference}.pdf',
+      filename: 'recu_acompte_$reference.pdf',
     );
   }
 

@@ -2,12 +2,10 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'dart:io';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:mon_coloc/utils/image_utils.dart';
 import 'package:mon_coloc/models/user_model.dart';
 
 /// Service gérant les opérations Firestore pour la collection 'users'
@@ -17,11 +15,44 @@ class UserService {
       .collection('users');
   final CollectionReference _signalementsCollection = FirebaseFirestore.instance
       .collection('signalements');
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  // FirebaseStorage n'est plus utilisé pour le téléversement direct d'images/documents
+  // final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  /// Helper pour encoder des octets en Data URL, avec compression d'image optionnelle.
+  Future<String> _encodeBytesToDataUrl({
+    required Uint8List bytes,
+    required String fileName,
+    bool compressImage = false,
+  }) async {
+    final extension = fileName.split('.').last.toLowerCase();
+    if (extension == 'pdf') {
+      return 'data:application/pdf;base64,${base64Encode(bytes)}';
+    } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+      if (compressImage) {
+        return ImageUtils.compressAndEncodeBase64(bytes);
+      } else {
+        return 'data:image/$extension;base64,${base64Encode(bytes)}';
+      }
+    } else {
+      // Fallback pour les types inconnus, traiter comme binaire
+      return 'data:application/octet-stream;base64,${base64Encode(bytes)}';
+    }
+  }
 
   /// Sauvegarde ou met à jour un utilisateur dans Firestore.
   Future<void> sauvegarderUtilisateur(UserModel user) async {
-    await _usersCollection.doc(user.uid).set(user.toFirestore());
+    final docRef = _usersCollection.doc(user.uid);
+    final doc = await docRef.get();
+    final data = user.toFirestore();
+
+    if (!doc.exists) {
+      // Si le document n'existe pas, c'est une création. On ajoute la date.
+      data['dateInscription'] = FieldValue.serverTimestamp();
+      // On définit un statut initial pour la modération (ex: pour les bailleurs)
+      data['status'] = 'en_attente';
+    }
+
+    await docRef.set(data, SetOptions(merge: true));
   }
 
   /// Met à jour partiellement un utilisateur dans Firestore.
@@ -121,25 +152,16 @@ class UserService {
     required PlatformFile file,
     required String nomChamp,
   }) async {
-    try {
-      await Future.delayed(const Duration(seconds: 1)); // Délai simulé
-
-      // Si le fichier contient des octets (cas Flutter Web ou fichier lu)
-      if (file.bytes != null) {
-        final base64String = base64Encode(file.bytes!);
-        final extension = file.extension?.toLowerCase() ?? 'png';
-        final mimeType =
-            extension == 'pdf' ? 'application/pdf' : 'image/$extension';
-        // Format Data URL exploitable directement par Flutter
-        return 'data:$mimeType;base64,$base64String';
-      }
-      // Repli si pas de bytes (ex: fallback)
-      return 'https://picsum.photos/800/600';
-    } catch (e) {
-      debugPrint('Erreur lors de la conversion Base64 : $e');
-      rethrow;
+    if (file.bytes == null) {
+      throw Exception("Les octets du fichier sont nuls.");
     }
+    return _encodeBytesToDataUrl(
+      bytes: file.bytes!,
+      fileName: file.name,
+      compressImage: true, // Compression pour les images justificatives
+    );
   }
+
   /// Signale un logement avec détails complets.
   Future<void> signalerLogement({
     required String logementId,
@@ -194,15 +216,16 @@ class UserService {
     return 'data:image/jpeg;base64,$base64String';
   }
 
-  /// Téléverse des données d'image (bytes) pour la photo de profil (Flutter Web).
+  /// Encode la photo de profil en chaîne Data URL Base64 (compressée)
   Future<String> televerserPhotoProfilBytes({
     required String uid,
     required Uint8List bytes,
   }) async {
-    final ref = _storage.ref().child('photos_profil/$uid.jpg');
-    final uploadTask = ref.putData(bytes);
-    final snapshot = await uploadTask;
-    return await snapshot.ref.getDownloadURL();
+    return _encodeBytesToDataUrl(
+      bytes: bytes,
+      fileName: 'profile_photo.jpg',
+      compressImage: true,
+    );
   }
 
   /// Encode des données d'image (bytes) pour un justificatif et retourne une Data URL.
@@ -229,8 +252,11 @@ class UserService {
     required String uid,
     required Uint8List bytes,
   }) async {
-    final base64String = base64Encode(bytes);
-    return 'data:image/jpeg;base64,$base64String';
+    return _encodeBytesToDataUrl(
+      bytes: bytes,
+      fileName: 'logement_photo.jpg', // Nom générique pour l'extension
+      compressImage: true,
+    );
   }
 
   /// Encode un document justificatif pour un bailleur en une chaîne de données Base64.
@@ -239,52 +265,13 @@ class UserService {
     required String uid,
     required String nom,
     Uint8List? bytes,
-    // Ajout d'une option pour compresser les images avant encodage
     bool compresserImage = false,
-    String? chemin,
   }) async {
-    try {
-      Uint8List? fileBytes = bytes;
-
-      // Si les bytes ne sont pas fournis mais un chemin l'est, lire le fichier.
-      if (fileBytes == null && chemin != null && chemin.isNotEmpty) {
-        fileBytes = await File(chemin).readAsBytes();
-      }
-
-      if (fileBytes != null && fileBytes.isNotEmpty) {
-        final mimeType = nom.toLowerCase().endsWith('.pdf')
-            ? 'application/pdf'
-            : 'image/jpeg';
-
-        // Si c'est une image et que la compression est demandée
-        if (mimeType == 'image/jpeg' && compresserImage) {
-          try {
-            // Utiliser le package 'image' pour décoder, redimensionner et compresser
-            final image = img.decodeImage(fileBytes);
-            if (image != null) {
-              img.Image resized = image;
-              // Redimensionner si l'image est trop grande
-              if (image.width > 1024 || image.height > 1024) {
-                resized = img.copyResize(image, width: 1024);
-              }
-              // Compresser en JPEG avec une qualité réduite
-              final compressedBytes = img.encodeJpg(resized, quality: 75);
-              final base64String = base64Encode(compressedBytes);
-              return 'data:$mimeType;base64,$base64String';
-            }
-          } catch (e) {
-            print(
-              'Erreur de compression d\'image, fallback sur l\'original: $e',
-            );
-          }
-        }
-
-        return 'data:$mimeType;base64,${base64Encode(fileBytes)}';
-      }
-      return '';
-    } catch (e) {
-      print('Erreur conversion Base64 pour justificatif bailleur : $e');
-      return '';
-    }
+    if (bytes == null || bytes.isEmpty) return '';
+    return _encodeBytesToDataUrl(
+      bytes: bytes,
+      fileName: nom,
+      compressImage: compresserImage,
+    );
   }
 }

@@ -116,82 +116,12 @@ class _DemandesBailleurScreenState extends State<DemandesBailleurScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              title: Text(
-                                data['titreLogement'] as String? ??
-                                    'Titre non disponible',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              trailing: _StatutBadge(statut: statut),
-                            ),
-                            const Divider(),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 4.0,
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Demandeur : ${data['prenomEtudiant'] ?? ''} ${data['nomEtudiant'] ?? ''}',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Téléphone : ${data['telephoneEtudiant'] ?? 'Pas de numéro'}',
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Loyer : ${data['prix'] ?? data['loyer'] ?? 0} FCFA',
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            if (dateDemande != null)
-                              Text(
-                                'Demandé le: ${DateFormat.yMMMd('fr_FR').add_jm().format(dateDemande)}',
-                                style: const TextStyle(color: Colors.grey),
-                              ),
-                            if (statut == 'en_attente') ...[
-                              const SizedBox(height: 16),
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  TextButton(
-                                    onPressed: () => _updateStatutDemande(
-                                      demande.id,
-                                      'refusee',
-                                    ),
-                                    child: const Text(
-                                      'Refuser',
-                                      style: TextStyle(color: Colors.red),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton(
-                                    onPressed: () => _updateStatutDemande(
-                                      demande.id,
-                                      'acceptee',
-                                    ),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF1E6B4E),
-                                    ),
-                                    child: const Text('Accepter'),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
+                        padding: const EdgeInsets.all(16.0),
+                        child: _buildDemandeContent(
+                          demande,
+                          data,
+                          statut,
+                          dateDemande,
                         ),
                       ),
                     );
@@ -201,6 +131,140 @@ class _DemandesBailleurScreenState extends State<DemandesBailleurScreen> {
             ),
     );
   }
+  Widget _buildDemandeContent(
+    DocumentSnapshot demande,
+    Map<String, dynamic> data,
+    String statut,
+    DateTime? dateDemande,
+  ) {
+    // 1. Extraire directement les variables dénormalisées avec des fallbacks robustes.
+    final stringTitre =
+        data['logementTitre'] as String? ??
+        data['logementTitle'] as String? ??
+        data['titre'] as String? ??
+        'Titre non disponible';
+
+    final stringNom =
+        data['etudiantNom'] as String? ??
+        data['demandeurNom'] as String? ??
+        data['studentName'] as String? ??
+        'Étudiant inconnu';
+
+    final stringTel =
+        data['etudiantTelephone'] as String? ??
+        data['telephone'] as String? ??
+        data['phone'] as String? ??
+        'Pas de numéro';
+
+    final loyer = data['prix'] ?? data['loyer'] ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                stringTitre,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _StatutBadge(statut: statut),
+          ],
+        ),
+        const Divider(height: 24),
+        _buildInfoRow(
+          icon: Icons.person_outline,
+          label: 'Demandeur',
+          value: stringNom,
+        ),
+        const SizedBox(height: 12),
+        _buildInfoRow(
+          icon: Icons.phone_outlined,
+          label: 'Téléphone',
+          value: stringTel,
+        ),
+        const SizedBox(height: 12),
+        _buildInfoRow(
+          icon: Icons.real_estate_agent_outlined,
+          label: 'Loyer proposé',
+          value: '$loyer FCFA',
+        ),
+        const SizedBox(height: 16),
+        if (dateDemande != null)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              'Demandé le: ${DateFormat.yMMMd('fr_FR').add_jm().format(dateDemande)}',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+        if (statut == 'en_attente') ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _updateStatutDemande(demande.id, 'refusee'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red.shade700,
+                    side: BorderSide(color: Colors.red.shade200),
+                  ),
+                  child: const Text('Refuser'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _updateStatutDemande(demande.id, 'acceptee'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E6B4E),
+                  ),
+                  child: const Text('Accepter'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+Widget _buildInfoRow({
+  required IconData icon,
+  required String label,
+  required String value,
+}) {
+  return Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Icon(icon, size: 18, color: Colors.grey.shade600),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Text.rich(
+          TextSpan(
+            text: '$label: ',
+            style: TextStyle(color: Colors.grey.shade700),
+            children: [
+              TextSpan(
+                text: value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 /// Un badge coloré pour afficher le statut d'une demande.
@@ -222,6 +286,10 @@ class _StatutBadge extends StatelessWidget {
       case 'refusee':
         couleur = Colors.red;
         texte = 'Refusée';
+        break;
+      case 'payee':
+        couleur = const Color(0xFF1E6B4E); // Vert foncé, comme pour l'étudiant
+        texte = 'Payée';
         break;
       default: // en_attente
         couleur = Colors.orange;

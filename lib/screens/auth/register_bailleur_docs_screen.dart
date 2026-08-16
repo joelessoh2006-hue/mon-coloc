@@ -95,7 +95,6 @@ final result = await FilePicker.platform.pickFiles(
               _fichierPieceIdentite = FichierDocument(
                 nom: nom,
                 bytes: bytes,
-                chemin: file.path,
               );
               break;
             case 1:
@@ -104,7 +103,6 @@ final result = await FilePicker.platform.pickFiles(
               _fichierJustificatifPropriete = FichierDocument(
                 nom: nom,
                 bytes: bytes,
-                chemin: file.path,
               );
               break;
             case 2:
@@ -113,7 +111,6 @@ final result = await FilePicker.platform.pickFiles(
               _fichierJustificatifDomicile = FichierDocument(
                 nom: nom,
                 bytes: bytes,
-                chemin: file.path,
               );
               break;
           }
@@ -580,7 +577,9 @@ final result = await FilePicker.platform.pickFiles(
       child: Row(
         children: [
           OutlinedButton.icon(
-            onPressed: widget.onRetour,
+            onPressed: () {
+              if (Navigator.canPop(context)) widget.onRetour();
+            },
             icon: const Icon(Icons.arrow_back_rounded, size: 18),
             label: const Text('Retour'),
             style: OutlinedButton.styleFrom(

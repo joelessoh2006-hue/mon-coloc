@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:html' as html;
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/admin_service.dart';
 import '../../services/chat_service.dart';
 import '../../services/user_service.dart';
@@ -11,6 +10,7 @@ import '../chat_screen.dart';
 import 'widgets/admin_bailleur_card.dart';
 import 'widgets/admin_etudiant_card.dart';
 import 'widgets/admin_logement_card.dart';
+
 /// Écran du back-office administrateur complet.
 /// 5 onglets : Logements, Bailleurs en attente, Étudiants, Comptes Bloqués, Signalements.
 class AdminDashboardScreen extends StatefulWidget {
@@ -49,8 +49,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
           controller: _tabController,
           indicatorColor: theme.colorScheme.error,
           labelColor: theme.colorScheme.onErrorContainer,
-          unselectedLabelColor:
-              theme.colorScheme.onErrorContainer.withOpacity(0.6),
+          unselectedLabelColor: theme.colorScheme.onErrorContainer.withOpacity(
+            0.6,
+          ),
           isScrollable: true,
           tabs: [
             _buildTabWithBadge(
@@ -207,8 +208,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         }
 
         bailleurs.sort((a, b) {
-          return (b.data() as Map<String, dynamic>)['dateInscription']
-              .compareTo((a.data() as Map<String, dynamic>)['dateInscription']);
+          final dateA =
+              (a.data() as Map<String, dynamic>)['dateInscription']
+                  as Timestamp?;
+          final dateB =
+              (b.data() as Map<String, dynamic>)['dateInscription']
+                  as Timestamp?;
+
+          if (dateB == null) return -1; // Mettre B (sans date) à la fin
+          if (dateA == null) return 1; // Mettre A (sans date) à la fin
+
+          return dateB.compareTo(dateA); // Trier du plus récent au plus ancien
         });
 
         return ListView.builder(
@@ -290,7 +300,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
                     data: data,
                     onVerifier: _confirmerVerificationEtudiant,
                     onBloquerDebloquer: _confirmerBlocageDeblocage,
-                    onAfficherJustificatifs: () => _afficherJustificatifsEtudiant(data),
+                    onAfficherJustificatifs: () =>
+                        _afficherJustificatifsEtudiant(data),
                     onAfficherJustificatif: _afficherJustificatif,
                   );
                 },
@@ -300,7 +311,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
         );
       },
     );
-    
   }
 
   // ===========================================================================
@@ -420,19 +430,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
               ],
             ),
             const SizedBox(height: 12),
-           Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  children: [
-    Icon(Icons.comment_rounded, size: 16, color: Colors.grey.shade600),
-    const SizedBox(width: 8),
-    Expanded(
-      child: Text(
-        'Recours : $explicationsRecours',
-        style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-      ),
-    ),
-  ],
-),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.comment_rounded,
+                  size: 16,
+                  color: Colors.grey.shade600,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Recours : $explicationsRecours',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                  ),
+                ),
+              ],
+            ),
             if (explicationsRecours != null &&
                 explicationsRecours.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -890,9 +904,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
     );
   }
 
- /// Affiche un document justificatif (Base64 ou URL) directement dans une modale.
+  /// Affiche un document justificatif (Base64 ou URL) directement dans une modale.
   void _afficherJustificatif(String url) {
     if (url.isEmpty) return;
+    final bool estPdf =
+        url.contains('application/pdf') || url.toLowerCase().endsWith('.pdf');
 
     showDialog(
       context: context,
@@ -905,40 +921,93 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
             child: Center(
               child: Builder(
                 builder: (_) {
-                  // Cas d'un fichier encodé en Base64 (Data URL)
-                  if (url.startsWith('data:')) {
+                  // 1. CAS D'UN PDF (Base64 ou URL)
+                  if (estPdf) {
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(
+                          Icons.picture_as_pdf,
+                          size: 80,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Document PDF',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.open_in_new),
+                          label: const Text('Ouvrir / Télécharger le PDF'),
+                          onPressed: () async {
+                            final uri = Uri.parse(url);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Impossible d\'ouvrir le lien du PDF',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ],
+                    );
+                  }
+
+                  // 2. CAS D'UNE IMAGE EN BASE64 (Data URL)
+                  if (url.startsWith('data:image')) {
                     try {
-                      final base64Data = url.contains(',') ? url.split(',').last : url;
+                      final base64Data = url.contains(',')
+                          ? url.split(',').last
+                          : url;
                       final bytes = base64Decode(base64Data.trim());
-
-                      if (url.contains('application/pdf')) {
-                        return const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.picture_as_pdf, size: 64, color: Colors.red),
-                            SizedBox(height: 12),
-                            Text('Document PDF enregistré avec succès.'),
-                            Text('(Aperçu PDF indisponible directement dans la modale)', 
-                                 style: TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
-                        );
-                      }
-
                       return Image.memory(
                         bytes,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Text('Format d\'image non supporté'),
+                        errorBuilder: (_, _, _) =>
+                            const Text('Format d\'image non supporté'),
                       );
                     } catch (e) {
-                      return Text('Erreur de décodage : $e');
+                      return Text('Erreur de décodage Base64 : $e');
                     }
                   }
-
-                  // Cas d'une URL classique
+                  // 3. CAS D'UNE URL D'IMAGE DISTANTE (Firebase Storage / Web)
                   return Image.network(
                     url,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => const Text('Impossible d\'afficher l\'image distante'),
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(child: CircularProgressIndicator());
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.broken_image,
+                            size: 64,
+                            color: Colors.grey,
+                          ),
+                          SizedBox(height: 8),
+                          Text('Impossible d\'afficher l\'image distante.'),
+                          Text(
+                            '(Vérifiez les règles Firebase Storage ou l\'URL)',
+                            style: TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
               ),
@@ -954,9 +1023,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen>
       ),
     );
   }
+
   /// Affiche une boîte de dialogue listant les justificatifs d'un étudiant.
   void _afficherJustificatifsEtudiant(Map<String, dynamic> userData) {
-    final justificatifIdentiteUrl = userData['justificatifIdentiteUrl'] as String?;
+    final justificatifIdentiteUrl =
+        userData['justificatifIdentiteUrl'] as String?;
     final justificatifLoyerUrl = userData['justificatifLoyerUrl'] as String?;
     final justificatifBailUrl = userData['justificatifBailUrl'] as String?;
 
@@ -1428,21 +1499,51 @@ class _StatusBadge extends StatelessWidget {
     if (estBloque) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-        child: Text('BLOQUÉ', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+        decoration: BoxDecoration(
+          color: Colors.red.shade50,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          'BLOQUÉ',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.red.shade700,
+          ),
+        ),
       );
     }
     if (estVerifie) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-        child: Text('✓ Vérifié', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          '✓ Vérifié',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Colors.green.shade700,
+          ),
+        ),
       );
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12)),
-      child: Text('En attente', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade700)),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        'En attente',
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: Colors.orange.shade700,
+        ),
+      ),
     );
   }
 }

@@ -300,7 +300,8 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
                       isLabelVisible: count > 0,
                       child: TextButton.icon(
                         onPressed: () {
-                          Navigator.of(context).push(
+                          // Le bouton est maintenant fonctionnel
+                          Navigator.of(context).push( 
                             MaterialPageRoute(
                               builder: (_) => const DemandesBailleurScreen(),
                             ),
@@ -384,6 +385,31 @@ class _ManageLogementsScreenState extends State<ManageLogementsScreen> {
       );
     }
 
+    if (statut == 'reserve') {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.blue.shade200),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lock_rounded,
+              size: 16,
+              color: Colors.blue.shade700,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Réservé',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade700),
+            ),
+          ],
+        ),
+      );
+    }
     // Fallback pour un statut inconnu
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),

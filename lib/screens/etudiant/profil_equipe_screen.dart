@@ -2,7 +2,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:mon_coloc/models/user_model.dart';
-import 'package:mon_coloc/screens/chat_screen.dart';
 import 'package:mon_coloc/services/matching_service.dart';
 import 'package:mon_coloc/services/user_service.dart';
 
@@ -194,12 +193,8 @@ class _ProfilEquipeScreenState extends State<ProfilEquipeScreen> {
                             backgroundColor: Colors.white,
                             child: CircleAvatar(
                               radius: 23,
-                              backgroundImage: membre.photoUrl != null
-                                  ? NetworkImage(membre.photoUrl!)
-                                  : null,
-                              child: membre.photoUrl == null
-                                  ? Text(membre.prenom[0])
-                                  : null,
+                              backgroundImage: NetworkImage(membre.photoUrl),
+                              child: null,
                             ),
                           ),
                         );
@@ -287,10 +282,8 @@ class _ProfilEquipeScreenState extends State<ProfilEquipeScreen> {
             margin: const EdgeInsets.only(bottom: 8),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundImage: membre.photoUrl != null
-                    ? NetworkImage(membre.photoUrl!)
-                    : null,
-                child: membre.photoUrl == null ? Text(membre.prenom[0]) : null,
+                backgroundImage: NetworkImage(membre.photoUrl),
+                child: null,
               ),
               title: Text(
                 '${membre.prenom} ${membre.nom}',
