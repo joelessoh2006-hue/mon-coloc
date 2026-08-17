@@ -1,10 +1,21 @@
-import 'dart:js' as js;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_paystack_plus/flutter_paystack_plus.dart';
 import 'package:mon_coloc/services/pdf_service.dart';
+
+@JS('paystackPopUp')
+external void paystackPopUp(
+  JSString key,
+  JSString email,
+  JSNumber amount,
+  JSString ref,
+  JSString plan,
+  JSString currency,
+  JSFunction onClose,
+  JSFunction onSuccess,
+);
 
 class PaystackService {
   // Clé publique de test Paystack
@@ -22,7 +33,7 @@ class PaystackService {
     required String bailleurUid,
     required String etudiantUid,
     required String
-        typePaiement, // 'acompte_reservation', 'caution', 'loyer_mensuel'
+    typePaiement, // 'acompte_reservation', 'caution', 'loyer_mensuel'
     String? locationId, // Requis pour 'caution' et 'loyer_mensuel'
     String? echeanceId, // Requis pour 'loyer_mensuel'
     required VoidCallback onSuccess,
@@ -54,8 +65,9 @@ class PaystackService {
         // 2. Mises à jour spécifiques au type de paiement
         switch (typePaiement) {
           case 'acompte_reservation':
-            final logementRef =
-                _firestore.collection('logements').doc(logementId);
+            final logementRef = _firestore
+                .collection('logements')
+                .doc(logementId);
             batch.update(logementRef, {
               'estReserve': true,
               'statut': 'reserve',
@@ -82,8 +94,9 @@ class PaystackService {
                 "L'ID de la location est requis pour payer la caution.",
               );
             }
-            final locationRef =
-                _firestore.collection('locations').doc(locationId);
+            final locationRef = _firestore
+                .collection('locations')
+                .doc(locationId);
             batch.update(locationRef, {
               'cautionPayee': true,
               'datePaiementCaution': FieldValue.serverTimestamp(),
@@ -123,9 +136,7 @@ class PaystackService {
             ),
           );
 
-          await PdfService.generateReceipt(
-            transactionData: transactionData,
-          );
+          await PdfService.generateReceipt(transactionData: transactionData);
         }
       } catch (e) {
         debugPrint("Erreur post-paiement Firestore : $e");
@@ -195,22 +206,15 @@ class PaystackService {
     required VoidCallback onSuccess,
     required VoidCallback onClose,
   }) {
-    // Vérification de sécurité avant l'appel
-    if (!js.context.hasProperty('paystackPopUp')) {
-      debugPrint(
-          "Erreur : La fonction paystackPopUp est introuvable dans le navigateur.");
-      return;
-    }
-
-    js.context.callMethod('paystackPopUp', [
-      _publicKey,
-      email,
-      amountInSubunits,
-      reference,
-      '', // plan
-      'XOF', // currency
-      js.allowInterop(onClose),
-      js.allowInterop(onSuccess),
-    ]);
+    paystackPopUp(
+      _publicKey.toJS,
+      email.toJS,
+      amountInSubunits.toJS,
+      reference.toJS,
+      ''.toJS,
+      'XOF'.toJS,
+      onClose.toJS,
+      onSuccess.toJS,
+    );
   }
 }

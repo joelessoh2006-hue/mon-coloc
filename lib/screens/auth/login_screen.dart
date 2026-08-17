@@ -52,6 +52,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
       String message;
       switch (e.code) {
+        case 'network-request-failed':
+        case 'channel-error':
+          message = "Connexion instable ou lente. Veuillez réessayer.";
+          break;
         case 'user-not-found':
           message = 'Aucun compte trouvé avec cet email.';
           break;

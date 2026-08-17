@@ -135,6 +135,10 @@ class _RegisterBailleurScreenState extends State<RegisterBailleurScreen> {
       setState(() => _enChargement = false);
       String message;
       switch (e.code) {
+        case 'network-request-failed':
+        case 'channel-error':
+          message = "Connexion instable ou lente. Veuillez réessayer.";
+          break;
         case 'email-already-in-use':
           message = 'Cet email est déjà utilisé.';
           break;

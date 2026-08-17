@@ -10,10 +10,20 @@ class AuthService {
     required String email,
     required String motDePasse,
   }) async {
-    return await _auth.createUserWithEmailAndPassword(
-      email: email.trim(),
-      password: motDePasse,
-    );
+    try {
+      return await _auth
+          .createUserWithEmailAndPassword(
+            email: email.trim(),
+            password: motDePasse,
+          )
+          .timeout(const Duration(seconds: 12),
+              onTimeout: () => throw FirebaseAuthException(
+                    code: 'network-request-failed',
+                    message: 'Le serveur met trop de temps à répondre.',
+                  ));
+    } on FirebaseAuthException {
+      rethrow;
+    }
   }
 
   /// Connecte un utilisateur existant.
@@ -21,10 +31,20 @@ class AuthService {
     required String email,
     required String motDePasse,
   }) async {
-    return await _auth.signInWithEmailAndPassword(
-      email: email.trim(),
-      password: motDePasse,
-    );
+    try {
+      return await _auth
+          .signInWithEmailAndPassword(
+            email: email.trim(),
+            password: motDePasse,
+          )
+          .timeout(const Duration(seconds: 12),
+              onTimeout: () => throw FirebaseAuthException(
+                    code: 'network-request-failed',
+                    message: 'Le serveur met trop de temps à répondre.',
+                  ));
+    } on FirebaseAuthException {
+      rethrow;
+    }
   }
 
   /// Déconnecte l'utilisateur courant.
