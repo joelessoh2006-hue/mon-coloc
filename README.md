@@ -1,4 +1,4 @@
-<img width="146" height="317" alt="image" src="https://github.com/user-attachments/assets/6a6f6cdd-885c-497b-8f48-0125095052ee" /><h1 align="center">🏠 Mon-Coloc</h1>
+<h1 align="center">🏠 Mon-Coloc</h1>
 <p align="center"><strong>Application mobile de recherche de colocations étudiantes</strong></p>
 
 <p align="center">
@@ -33,10 +33,7 @@ De nombreux étudiants peinent à trouver une colocation adaptée à leur budget
 
 | Écran d'accueil | Détail d'une annonce | Publication |
 |---|---|---|
-| `<img width="146" height="317" alt="image" src="https://github.com/user-attachments/assets/f1da0ec7-ac97-4313-80dd-ead98672ac74" />
-` | `[<img width="149" height="319" alt="image" src="https://github.com/user-attachments/assets/c657eea3-d356-4988-90a3-a0d5f5840dd5" />
-]` | `[<img width="148" height="319" alt="image" src="https://github.com/user-attachments/assets/c5efdda9-e71e-4c92-8754-82836b01e058" />
-]` |
+| <img width="150" height="320" alt="Écran de connexion" src="https://github.com/user-attachments/assets/f1da0ec7-ac97-4313-80dd-ead98672ac74" /> | <img width="150" height="320" alt="Détail d'une annonce" src="https://github.com/user-attachments/assets/c657eea3-d356-4988-90a3-a0d5f5840dd5" /> | <img width="150" height="320" alt="Écran de publication" src="https://github.com/user-attachments/assets/c5efdda9-e71e-4c92-8754-82836b01e058" /> |
 
 ---
 
@@ -64,7 +61,7 @@ lib/
 
 ## ⚙️ Installation
 
-```bash
+\`\`\`bash
 # Cloner le dépôt
 git clone https://github.com/joelessoh2006-hue/Mon-Coloc.git
 cd Mon-Coloc
@@ -77,7 +74,7 @@ flutter pub get
 
 # Lancer l'application
 flutter run
-```
+\`\`\`
 
 ---
 
@@ -94,4 +91,4 @@ flutter run
 
 Développé par **Joel Essoh** dans le cadre de mon projet de fin de Licence en Génie Logiciel.
 
-• [Email](mailto:joelessoh2006@gmail.com)
+📫 [Email](mailto:joelessoh2006@gmail.com)
