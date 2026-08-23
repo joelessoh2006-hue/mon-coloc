@@ -91,4 +91,4 @@ flutter run
 
 Développé par **Joel** dans le cadre de mon projet de fin de Licence en Génie Logiciel.
 
-📫 [LinkedIn](https://www.linkedin.com/in/VOTRE-PROFIL) • [Email](mailto:VOTRE_EMAIL@example.com)
+• [Email](mailto:joelessoh2006@gmail.com)
