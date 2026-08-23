@@ -1,4 +1,4 @@
-<h1 align="center">🏠 Mon-Coloc</h1>
+<img width="146" height="317" alt="image" src="https://github.com/user-attachments/assets/6a6f6cdd-885c-497b-8f48-0125095052ee" /><h1 align="center">🏠 Mon-Coloc</h1>
 <p align="center"><strong>Application mobile de recherche de colocations étudiantes</strong></p>
 
 <p align="center">
@@ -33,7 +33,10 @@ De nombreux étudiants peinent à trouver une colocation adaptée à leur budget
 
 | Écran d'accueil | Détail d'une annonce | Publication |
 |---|---|---|
-| `[Capture d'écran 1]` | `[Capture d'écran 2]` | `[Capture d'écran 3]` |
+| `<img width="146" height="317" alt="image" src="https://github.com/user-attachments/assets/f1da0ec7-ac97-4313-80dd-ead98672ac74" />
+` | `[<img width="149" height="319" alt="image" src="https://github.com/user-attachments/assets/c657eea3-d356-4988-90a3-a0d5f5840dd5" />
+]` | `[<img width="148" height="319" alt="image" src="https://github.com/user-attachments/assets/c5efdda9-e71e-4c92-8754-82836b01e058" />
+]` |
 
 ---
 
@@ -89,6 +92,6 @@ flutter run
 
 ## 👨‍💻 Auteur
 
-Développé par **Joel** dans le cadre de mon projet de fin de Licence en Génie Logiciel.
+Développé par **Joel Essoh** dans le cadre de mon projet de fin de Licence en Génie Logiciel.
 
 • [Email](mailto:joelessoh2006@gmail.com)
