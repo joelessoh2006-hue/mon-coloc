@@ -13,6 +13,7 @@ Trouver une colocation adaptée à son budget, sa zone géographique et ses pré
 - Authentification et gestion de profil
 - Échanges entre utilisateurs
 - Synchronisation des données avec Cloud Firestore
+- Intégration de l’API Paystack en mode test pour expérimenter un parcours de paiement; aucun paiement réel n’est effectué
 
 ## Captures d’écran
 
@@ -26,6 +27,7 @@ Trouver une colocation adaptée à son budget, sa zone géographique et ses pré
 - **Firebase Authentication** pour l’authentification
 - **Cloud Firestore** pour les données
 - **Firebase Storage** pour le stockage de fichiers
+- **API Paystack** utilisée en environnement de test
 
 ## Organisation du code
 
